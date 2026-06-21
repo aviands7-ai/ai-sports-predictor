@@ -240,6 +240,7 @@ with tab_intel:
                     form_away=form_a_factor,
                     lineup_home=lineup_f_h,
                     lineup_away=lineup_f_a,
+                    pure_probs=ensemble_data.get("pure"),  # EV מבוסס מודל טהור
                 )
 
                 # שמור opening odds ל-CLV
@@ -645,21 +646,29 @@ with tab_value:
             fixtures = load_for_scan()
             upcoming = [f for f in fixtures if f["fixture"]["status"]["short"] in ("NS","TBD")]
 
+        # ── משימה 2 (ג'מיני): קריאת Odds אחת לכל המשחקים ──
+        from odds_api import get_all_odds_batch, lookup_odds_from_batch
+        with st.spinner("שואב Odds — קריאה אחת לכל המשחקים..."):
+            odds_batch = get_all_odds_batch()
+        st.caption(f"נטענו Odds ל-{len(odds_batch)//2} משחקים בקריאה אחת")
+
         value_rows = []
         progress = st.progress(0)
         for i, f in enumerate(upcoming):
             progress.progress((i+1)/max(len(upcoming),1))
             h = f["teams"]["home"]
             a = f["teams"]["away"]
-            fid = f["fixture"]["id"]
             elo_h = get_team_elo(h["id"])
             elo_a = get_team_elo(a["id"])
-            live = get_best_odds(h["name"], a["name"])
+
+            # שליפה מהמילון — ללא קריאת API נוספת
+            live = lookup_odds_from_batch(odds_batch, h["name"], a["name"])
             if not live:
                 continue
             odds = {k: live.get(k) for k in ["home","draw","away"]}
             if not all(v and 1.01 <= v <= 25 for v in odds.values()):
                 continue
+
             an = full_match_analysis(elo_h, elo_a, odds, home_advantage=0.0)
             for outcome, label in [("home", h["name"]), ("draw", "תיקו"), ("away", a["name"])]:
                 ev = an[outcome]["ev"]
@@ -746,6 +755,37 @@ with tab_backtest:
                 st.warning("🔶 יתרון קטן — צריך יותר נתונים.")
             else:
                 st.error("⚠️ ROI שלילי. אל תשים כסף.")
+
+            # ── A/B Testing ──────────────────────────────────────
+            ab = results.get("ab_testing", {})
+            if ab:
+                st.divider()
+                st.markdown("### 🔬 A/B Testing — השוואת מודלים")
+                st.caption("איזה מודל מייצר הכי הרבה רווח? ROI לכל תצורה במקביל.")
+
+                ab_rows = []
+                model_labels = {
+                    "elo_pure": "A — Elo טהור",
+                    "elo_form": "B — Elo + Form + פציעות",
+                    "ensemble": "C — Ensemble מלא",
+                }
+                for key, label in model_labels.items():
+                    m = ab.get(key, {})
+                    if m:
+                        ab_rows.append({
+                            "מודל": label,
+                            "ROI %": f"{m['roi_pct']:+.1f}%",
+                            "רווח/הפסד": f"${m['profit']:+.0f}",
+                            "הימורים": m["bets_placed"],
+                            "Win Rate": f"{m['win_rate_pct']:.1f}%",
+                            "תקציב סופי": f"${m['final_bankroll']:,.0f}",
+                        })
+
+                if ab_rows:
+                    st.dataframe(pd.DataFrame(ab_rows), hide_index=True, use_container_width=True)
+
+                    if not results.get("has_ab_data"):
+                        st.info("⏳ כרגע כל המודלים מחושבים על אותן הסתברויות. לאחר הוספת עמודות prob_elo_* ו-prob_ensemble_* לטבלת predictions — ההשוואה תהיה מלאה.")
 
     st.divider()
     st.markdown("### 🎯 Calibration — כיול המודל")

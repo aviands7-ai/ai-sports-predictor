@@ -393,9 +393,13 @@ def full_match_analysis(elo_home: float, elo_away: float,
                         form_away: float = 1.0,
                         lineup_home: float = 1.0,
                         lineup_away: float = 1.0,
+                        pure_probs: dict | None = None,
                         odds_updated_at: str | None = None) -> dict:
     """
     ניתוח מלא: הסתברויות + Form + Lineup + EV + Kelly + Odds Freshness.
+
+    pure_probs: הסתברויות מהמודל הטהור (ללא שוק) — לחישוב EV נכון.
+    אם לא מועבר, משתמש בהסתברויות של Elo+Poisson.
     """
     probs = match_probabilities(
         elo_home, elo_away, home_advantage,
@@ -403,33 +407,36 @@ def full_match_analysis(elo_home: float, elo_away: float,
         lineup_home=lineup_home, lineup_away=lineup_away,
     )
 
+    # הסתברויות לחישוב EV — תמיד מהמודל הטהור (ללא שוק)
+    ev_probs = pure_probs if pure_probs else probs
+
     results = {}
     for outcome in ["home", "draw", "away"]:
-        p = probs[outcome]
+        p_display = probs[outcome]          # לתצוגה — הסתברות Elo+Poisson
+        p_ev      = ev_probs.get(outcome, p_display)  # לEV — מודל טהור
         o = odds.get(outcome, 0)
-        ev = expected_value(p, o)
-        k = kelly_fraction(p, o)
+        ev = expected_value(p_ev, o)        # EV מבוסס מודל טהור בלבד
+        k  = kelly_fraction(p_ev, o)
         results[outcome] = {
-            "our_prob": round(p * 100, 1),
-            "our_prob_raw": p,
-            "odds": o,
+            "our_prob":     round(p_display * 100, 1),  # מה שמוצג למשתמש
+            "our_prob_raw": p_display,
+            "our_prob_ev":  round(p_ev * 100, 1),       # מה שמחשב EV
+            "odds":         o,
             "implied_prob": round(implied_probability(o) * 100, 1),
-            "fair_odds": fair_odds(p),
-            "ev": ev,
-            "kelly_pct": round(k * 100, 2),
-            "is_value": ev > 0,
+            "fair_odds":    fair_odds(p_ev),             # Fair Odds לפי מודל טהור
+            "ev":           ev,
+            "kelly_pct":    round(k * 100, 2),
+            "is_value":     ev > 0,
         }
 
-    results["overround"] = overround(
-        odds.get("home", 1), odds.get("draw", 1), odds.get("away", 1)
-    )
-    results["xg_home"] = probs["xg_home"]
-    results["xg_away"] = probs["xg_away"]
-    results["top_scores"] = most_likely_scores(probs["score_matrix"])
-    results["form_home"] = round(form_home, 3)
-    results["form_away"] = round(form_away, 3)
-    results["lineup_home"] = round(lineup_home, 3)
-    results["lineup_away"] = round(lineup_away, 3)
-    results["odds_freshness"] = odds_freshness(odds_updated_at)
+    results["overround"]     = overround(odds.get("home",1), odds.get("draw",1), odds.get("away",1))
+    results["xg_home"]       = probs["xg_home"]
+    results["xg_away"]       = probs["xg_away"]
+    results["top_scores"]    = most_likely_scores(probs["score_matrix"])
+    results["form_home"]     = round(form_home, 3)
+    results["form_away"]     = round(form_away, 3)
+    results["lineup_home"]   = round(lineup_home, 3)
+    results["lineup_away"]   = round(lineup_away, 3)
+    results["odds_freshness"]= odds_freshness(odds_updated_at)
 
     return results

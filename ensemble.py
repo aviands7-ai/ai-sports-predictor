@@ -99,9 +99,14 @@ def ensemble_probabilities(
     live_odds: dict | None = None,
 ) -> dict:
     """
-    Ensemble של שלושה מודלים:
-    - אם יש odds: Elo 50% + FIFA 20% + Market 30%
-    - אם אין odds: Elo 70% + FIFA 30%
+    Ensemble של שלושה מודלים — עם הפרדה קריטית:
+
+    prediction_probs = לתצוגה למשתמש (כולל שוק)
+    pure_probs       = לחישוב EV בלבד (ללא שוק — מונע לולאה עצמית)
+
+    הסבר הבעיה: אם נשתמש בשוק כדי לחזות, ואז נשווה ל-Odds של השוק,
+    אנחנו "אוכלים" את ה-EV של עצמנו. המודל הטהור (Elo+FIFA) הוא מה
+    שמייצג את הדעה העצמאית שלנו.
     """
     # מודל 1 — Elo + Poisson + כל הפקטורים
     elo_probs_raw = match_probabilities(
@@ -116,38 +121,47 @@ def ensemble_probabilities(
     # מודל 2 — FIFA Rankings
     fifa_probs = fifa_probabilities(home_name, away_name)
 
-    # מודל 3 — שוק ההימורים (אם זמין)
+    # ── מודל טהור (לחישוב EV) — ללא שוק ──────────────────────────────
+    # תמיד 70% Elo + 30% FIFA — עצמאי לחלוטין מהשוק
+    pure_weights = {"elo": 0.70, "fifa": 0.30}
+    pure_probs = {}
+    for outcome in ["home", "draw", "away"]:
+        pure_probs[outcome] = round(
+            elo_probs[outcome] * pure_weights["elo"] +
+            fifa_probs[outcome] * pure_weights["fifa"],
+            4
+        )
+    total_pure = sum(pure_probs.values())
+    pure_probs = {k: round(v / total_pure, 4) for k, v in pure_probs.items()}
+
+    # ── מודל חיזוי (לתצוגה) — כולל שוק אם זמין ──────────────────────
     market_probs = market_probabilities(live_odds)
 
     if market_probs:
-        weights = {"elo": 0.50, "fifa": 0.20, "market": 0.30}
+        display_weights = {"elo": 0.50, "fifa": 0.20, "market": 0.30}
         blended = {}
         for outcome in ["home", "draw", "away"]:
             blended[outcome] = round(
-                elo_probs[outcome]   * weights["elo"] +
-                fifa_probs[outcome]  * weights["fifa"] +
-                market_probs[outcome] * weights["market"],
+                elo_probs[outcome]    * display_weights["elo"] +
+                fifa_probs[outcome]   * display_weights["fifa"] +
+                market_probs[outcome] * display_weights["market"],
                 4
             )
     else:
-        weights = {"elo": 0.70, "fifa": 0.30}
-        blended = {}
-        for outcome in ["home", "draw", "away"]:
-            blended[outcome] = round(
-                elo_probs[outcome]  * weights["elo"] +
-                fifa_probs[outcome] * weights["fifa"],
-                4
-            )
+        display_weights = pure_weights
+        blended = dict(pure_probs)
 
     # נרמול
     total = sum(blended.values())
     blended = {k: round(v / total, 4) for k, v in blended.items()}
 
     return {
-        "ensemble": blended,
+        "ensemble": blended,          # לתצוגה — כולל שוק
+        "pure": pure_probs,           # לחישוב EV — ללא שוק
         "elo": elo_probs,
         "fifa": fifa_probs,
         "market": market_probs,
-        "weights": weights,
+        "weights": display_weights,
+        "pure_weights": pure_weights,
         "has_market": market_probs is not None,
     }

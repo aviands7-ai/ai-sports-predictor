@@ -219,3 +219,74 @@ def get_best_odds(home_team: str, away_team: str) -> dict | None:
         "all_books":  all_books,
         "is_best_line": True,
     }
+
+
+def get_all_odds_batch() -> dict:
+    """
+    משימה 2 (ג'מיני): קריאת API אחת לכל המשחקים.
+    מחזיר מילון {(home_team, away_team): odds_dict}
+    במקום קריאה נפרדת לכל משחק — חוסך 30+ קריאות API.
+    """
+    data = _get_events()
+    if not data:
+        return {}
+
+    batch = {}
+    for event in data:
+        h = event.get("home_team", "")
+        a = event.get("away_team", "")
+        books = _extract_odds(event)
+        if not books:
+            continue
+
+        # Best Line מכל הבוקמייקרים
+        valid = [b for b in books if 1.01 <= b["home"] <= 25 and 1.01 <= b["draw"] <= 25 and 1.01 <= b["away"] <= 25]
+        if not valid:
+            continue
+
+        best_home = max(valid, key=lambda b: b["home"])
+        best_draw = max(valid, key=lambda b: b["draw"])
+        best_away = max(valid, key=lambda b: b["away"])
+
+        odds_result = {
+            "home":        best_home["home"],
+            "home_book":   best_home["name"],
+            "draw":        best_draw["draw"],
+            "draw_book":   best_draw["name"],
+            "away":        best_away["away"],
+            "away_book":   best_away["name"],
+            "last_update": best_home.get("last_update", ""),
+            "is_best_line": True,
+        }
+
+        # מפתח כפול — לפי שמות מקוריים
+        batch[(h, a)] = odds_result
+
+        # גם לפי שמות בלואר לגמישות חיפוש
+        batch[(h.lower(), a.lower())] = odds_result
+
+    print(f"[OddsAPI] Batch: {len(data)} משחקים → {len(data)} odds")
+    return batch
+
+
+def lookup_odds_from_batch(batch: dict, home_team: str, away_team: str) -> dict | None:
+    """
+    שולף odds ממילון ה-batch מבלי לקרוא ל-API.
+    מחפש לפי שמות מקוריים ולפי מילים.
+    """
+    # חיפוש מדויק
+    key = (home_team.lower(), away_team.lower())
+    if key in batch:
+        return batch[key]
+
+    # חיפוש גמיש לפי מילים
+    home_words = set(home_team.lower().split())
+    away_words = set(away_team.lower().split())
+
+    for (bh, ba), odds in batch.items():
+        bh_words = set(bh.split())
+        ba_words = set(ba.split())
+        if bool(home_words & bh_words) and bool(away_words & ba_words):
+            return odds
+
+    return None

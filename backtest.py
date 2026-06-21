@@ -171,20 +171,113 @@ def value_bet_stats(predictions: list[dict]) -> dict:
     }
 
 
+def roi_simulation_ab(predictions: list[dict],
+                      bankroll: float = 1000.0,
+                      prob_field_home: str = "prob_home",
+                      prob_field_draw: str = "prob_draw",
+                      prob_field_away: str = "prob_away") -> dict:
+    """
+    משימה 3 (ג'מיני): A/B Testing — ROI לפי מודל ספציפי.
+    prob_field_* מאפשר להחליף את שדה ההסתברות לבדיקת מודל שונה.
+    """
+    from engine import expected_value, kelly_fraction, fair_odds
+
+    history = [bankroll]
+    bets_placed = bets_won = 0
+    total_wagered = total_return = 0.0
+
+    for p in predictions:
+        actual = p.get("actual_result")
+        if not actual:
+            continue
+
+        for outcome, pfield in [
+            ("home", prob_field_home),
+            ("draw", prob_field_draw),
+            ("away", prob_field_away),
+        ]:
+            prob = p.get(pfield, 0) or 0
+            odds = p.get(f"odds_{outcome}", 0) or 0
+            if prob <= 0 or odds <= 1:
+                continue
+
+            ev = expected_value(prob, odds)
+            k  = kelly_fraction(prob, odds)
+
+            if ev > 0 and k > 0:
+                bet_size = bankroll * k
+                total_wagered += bet_size
+                bets_placed += 1
+                if actual == outcome:
+                    bankroll += bet_size * (odds - 1)
+                    total_return += bet_size * odds
+                    bets_won += 1
+                else:
+                    bankroll -= bet_size
+                history.append(round(bankroll, 2))
+                break
+
+    roi = round((total_return - total_wagered) / total_wagered * 100, 1) if total_wagered > 0 else 0
+    win_rate = round(bets_won / bets_placed * 100, 1) if bets_placed > 0 else 0
+
+    return {
+        "final_bankroll": round(bankroll, 2),
+        "profit": round(bankroll - history[0], 2),
+        "bets_placed": bets_placed,
+        "bets_won": bets_won,
+        "win_rate_pct": win_rate,
+        "roi_pct": roi,
+        "history": history,
+    }
+
+
 def run_full_backtest(starting_bankroll: float = 1000.0) -> dict:
-    """מריץ backtest מלא על כל התחזיות עם תוצאות."""
+    """מריץ backtest מלא על כל התחזיות עם תוצאות — כולל A/B Testing."""
     predictions = get_predictions_with_results()
 
     if not predictions:
         return {"error": "אין תחזיות עם תוצאות בסיס לבדיקה."}
 
+    # ── A/B Testing — שלושה מודלים במקביל ──────────────────────────
+    # מודל A: Elo טהור — prob_elo_* (אם קיים בDB) או prob_* כברירת מחדל
+    has_elo_field = any(p.get("prob_elo_home") for p in predictions)
+
+    ab_results = {}
+
+    # מודל A — Elo בסיסי
+    ab_results["elo_pure"] = roi_simulation_ab(
+        predictions, bankroll=starting_bankroll,
+        prob_field_home="prob_elo_home" if has_elo_field else "prob_home",
+        prob_field_draw="prob_elo_draw" if has_elo_field else "prob_draw",
+        prob_field_away="prob_elo_away" if has_elo_field else "prob_away",
+    )
+
+    # מודל B — Elo + Form + פציעות (prob_home הוא זה)
+    ab_results["elo_form"] = roi_simulation_ab(
+        predictions, bankroll=starting_bankroll,
+        prob_field_home="prob_home",
+        prob_field_draw="prob_draw",
+        prob_field_away="prob_away",
+    )
+
+    # מודל C — Ensemble מלא (prob_ensemble_* אם קיים)
+    has_ensemble = any(p.get("prob_ensemble_home") for p in predictions)
+    ab_results["ensemble"] = roi_simulation_ab(
+        predictions, bankroll=starting_bankroll,
+        prob_field_home="prob_ensemble_home" if has_ensemble else "prob_home",
+        prob_field_draw="prob_ensemble_draw" if has_ensemble else "prob_draw",
+        prob_field_away="prob_ensemble_away" if has_ensemble else "prob_away",
+    )
+
     return {
-        "n_matches": len(predictions),
-        "accuracy": accuracy(predictions),
-        "roi": roi_simulation(predictions, bankroll=starting_bankroll),
+        "n_matches":   len(predictions),
+        "accuracy":    accuracy(predictions),
+        "roi":         roi_simulation(predictions, bankroll=starting_bankroll),
         "brier_score": brier_score(predictions),
         "calibration": calibration_chart(predictions),
-        "value_bets": value_bet_stats(predictions),
+        "value_bets":  value_bet_stats(predictions),
+        "ab_testing":  ab_results,
+        "has_ab_data": has_elo_field or has_ensemble,
     }
 
 
