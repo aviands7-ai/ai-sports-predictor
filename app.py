@@ -38,10 +38,24 @@ from decision_engine import get_flag_url, analyze_recent_form, calculate_team_sc
 
 # ─── כותרת ─────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="text-align:center;padding:32px 20px 24px;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#0f172a 100%);border-radius:16px;margin-bottom:24px">
-  <div style="font-size:48px;margin-bottom:8px">🏆</div>
-  <div style="font-size:32px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;margin-bottom:6px">World Cup 2026 Predictor</div>
-  <div style="font-size:13px;color:#93c5fd;letter-spacing:0.1em;text-transform:uppercase">Elo &nbsp;·&nbsp; Poisson Distribution &nbsp;·&nbsp; Kelly Criterion &nbsp;·&nbsp; Value Bets</div>
+<div style="text-align:center;padding:36px 20px 28px;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#0f172a 100%);border-radius:16px;margin-bottom:24px">
+  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-bottom:12px">
+    <!-- גביע -->
+    <path d="M20 8 H44 V30 C44 42 32 46 32 46 C32 46 20 42 20 30 Z" fill="#F59E0B" stroke="#D97706" stroke-width="1.5"/>
+    <!-- ידיות -->
+    <path d="M20 12 C14 12 10 16 10 22 C10 28 14 30 20 28" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <path d="M44 12 C50 12 54 16 54 22 C54 28 50 30 44 28" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <!-- גוף תחתון -->
+    <rect x="27" y="46" width="10" height="8" fill="#D97706"/>
+    <!-- בסיס -->
+    <rect x="20" y="54" width="24" height="4" rx="2" fill="#F59E0B" stroke="#D97706" stroke-width="1"/>
+    <!-- ברק פנימי -->
+    <path d="M28 16 L32 26 L36 16" fill="#FCD34D" opacity="0.6"/>
+    <!-- כוכב -->
+    <path d="M32 12 L33.2 15.6 L37 15.6 L34 17.8 L35.2 21.4 L32 19.2 L28.8 21.4 L30 17.8 L27 15.6 L30.8 15.6 Z" fill="#FEF3C7"/>
+  </svg>
+  <div style="font-size:30px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;margin-bottom:8px">World Cup 2026 Predictor</div>
+  <div style="font-size:12px;color:#93c5fd;letter-spacing:0.12em;text-transform:uppercase">Elo &nbsp;·&nbsp; Poisson Distribution &nbsp;·&nbsp; Kelly Criterion &nbsp;·&nbsp; Value Bets</div>
 </div>
 """, unsafe_allow_html=True)
 
