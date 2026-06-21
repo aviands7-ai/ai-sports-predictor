@@ -367,96 +367,132 @@ with tab_intel:
             with c6:
                 st.markdown(f'<div class="metric-card"><div class="metric-value">{analysis["xg_away"]}</div><div class="metric-label">xG — {away["name"]}</div></div>', unsafe_allow_html=True)
 
-            # ─── Odds Freshness Banner ──────────────────────────────
-            f_color = freshness.get("color", "#6b7a99")
-            f_label = freshness.get("label", "⚪ אין נתונים")
-            f_status = freshness.get("status", "missing")
-            if f_status == "missing":
-                st.markdown(f'<div class="alert-box alert-warn">⚠️ <b>אין יחסי הימורים</b> זמינים למשחק זה — EV ו-Kelly לא אמינים. אל תסמוך על המספרים.</div>', unsafe_allow_html=True)
-            elif f_status in ("stale", "old"):
-                st.markdown(f'<div class="alert-box alert-warn">⚠️ <b>Odds ישנים:</b> {f_label} (מאתר: {odds_bm}) — יחסים אלה עלולים להיות לא רלוונטיים.</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="alert-box alert-info">✓ <b>Odds עדכניים:</b> {f_label} · מאתר: {odds_bm}</div>', unsafe_allow_html=True)
-
             st.markdown("<br>", unsafe_allow_html=True)
-
             col_quant, col_intel = st.columns([3, 2])
 
             # ─── Quant Column ───────────────────────────────────────
             with col_quant:
-                st.markdown("#### 🧮 ניתוח מתמטי")
+                st.markdown("#### 🧮 ניתוח מתמטי — תחזית המודל")
 
-                # Probability bars
-                probs = {
-                    "home": (analysis["home"]["our_prob"], f"{home['name']} מנצחת"),
-                    "draw": (analysis["draw"]["our_prob"], "תיקו"),
-                    "away": (analysis["away"]["our_prob"], f"{away['name']} מנצחת"),
+                # ── הסתברויות המודל (ללא תלות ב-odds) ──
+                probs_display = {
+                    "home": (analysis["home"]["our_prob"], f"{home['name']} מנצחת", analysis["home"]["fair_odds"]),
+                    "draw": (analysis["draw"]["our_prob"], "תיקו", analysis["draw"]["fair_odds"]),
+                    "away": (analysis["away"]["our_prob"], f"{away['name']} מנצחת", analysis["away"]["fair_odds"]),
                 }
                 bar_classes = {"home": "bar-home", "draw": "bar-draw", "away": "bar-away"}
 
                 bars_html = '<div class="prob-bar-container">'
-                for key, (pct, label) in probs.items():
-                    ev = analysis[key]["ev"]
-                    ev_badge = f'<span class="value-badge value-positive">EV +{ev:.1%}</span>' if ev > 0 else f'<span class="value-badge value-negative">EV {ev:.1%}</span>'
+                for key, (pct, label, fair) in probs_display.items():
                     bars_html += f"""
                     <div class="prob-row">
                         <div class="prob-label">{label}</div>
                         <div class="prob-bar-wrap">
                             <div class="prob-bar-fill {bar_classes[key]}" style="width:{pct}%">{pct}%</div>
                         </div>
-                        {ev_badge}
+                        <span style="font-size:0.78rem;color:#6b7a99;width:80px;flex-shrink:0">יחס הוגן: {fair}</span>
                     </div>"""
                 bars_html += "</div>"
                 st.markdown(bars_html, unsafe_allow_html=True)
 
-                # Odds comparison
-                if odds.get("home"):
-                    st.markdown("**יחסי הימורים vs. תחזית:**")
-                    odds_df = pd.DataFrame({
-                        "תוצאה": [f"{home['name']} מנצחת", "תיקו", f"{away['name']} מנצחת"],
-                        "סיכוי שלנו %": [
-                            analysis["home"]["our_prob"],
-                            analysis["draw"]["our_prob"],
-                            analysis["away"]["our_prob"]
-                        ],
-                        "יחס אתר": [
-                            odds.get("home", "-"), odds.get("draw", "-"), odds.get("away", "-")
-                        ],
-                        "סיכוי משתמע %": [
-                            analysis["home"]["implied_prob"],
-                            analysis["draw"]["implied_prob"],
-                            analysis["away"]["implied_prob"]
-                        ],
-                        "יחס הוגן": [
-                            analysis["home"]["fair_odds"],
-                            analysis["draw"]["fair_odds"],
-                            analysis["away"]["fair_odds"]
-                        ],
-                        "EV": [
-                            analysis["home"]["ev"],
-                            analysis["draw"]["ev"],
-                            analysis["away"]["ev"]
-                        ],
-                    })
-                    st.dataframe(odds_df, use_container_width=True, hide_index=True)
-                    st.caption(f"Overround אתר: {analysis['overround']}% (margin של הבית)")
+                # ── הכנסת Odds ידנית ──
+                st.markdown("---")
+                st.markdown("#### 💱 הכנס Odds מהאתר שלך")
+                st.markdown('<div class="alert-box alert-info">הכנס את היחסים מ-Bet365 / William Hill / Pinnacle לחישוב EV ו-Kelly מדויק.</div>', unsafe_allow_html=True)
 
-                # Kelly recommendation
-                best_ev_key = max(["home", "draw", "away"], key=lambda k: analysis[k]["ev"])
-                best = analysis[best_ev_key]
-                if best["ev"] > 0:
-                    outcome_name = {"home": f"{home['name']} מנצחת", "draw": "תיקו", "away": f"{away['name']} מנצחת"}[best_ev_key]
-                    st.markdown(f"""
-                    <div class="kelly-rec">
-                        <div class="k-title">✅ Value Bet זוהה</div>
-                        <div class="k-value">{best['kelly_pct']}% מהתקציב</div>
-                        <div class="k-sub">על {outcome_name} · יחס {odds.get(best_ev_key, '?')} · EV {best['ev']:.1%} · Quarter-Kelly</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown('<div class="alert-warn">⚠️ אין Value Bet — המודל לא מצא יתרון מתמטי מול יחסי האתר.</div>', unsafe_allow_html=True)
+                mc1, mc2, mc3 = st.columns(3)
+                with mc1:
+                    manual_home = st.number_input(
+                        f"יחס — {home['name']} מנצחת",
+                        min_value=1.01, max_value=50.0,
+                        value=float(odds.get("home", 2.0)) if odds.get("home", 0) > 1.2 else 2.0,
+                        step=0.05, format="%.2f",
+                        key="manual_home"
+                    )
+                with mc2:
+                    manual_draw = st.number_input(
+                        "יחס — תיקו",
+                        min_value=1.01, max_value=50.0,
+                        value=float(odds.get("draw", 3.2)) if odds.get("draw", 0) > 1.2 else 3.2,
+                        step=0.05, format="%.2f",
+                        key="manual_draw"
+                    )
+                with mc3:
+                    manual_away = st.number_input(
+                        f"יחס — {away['name']} מנצחת",
+                        min_value=1.01, max_value=50.0,
+                        value=float(odds.get("away", 3.5)) if odds.get("away", 0) > 1.2 else 3.5,
+                        step=0.05, format="%.2f",
+                        key="manual_away"
+                    )
+
+                bookmaker_name = st.text_input("שם האתר (אופציונלי)", value="", placeholder="למשל: Bet365", key="bm_name")
+
+                if st.button("⚡ חשב EV ו-Kelly", key="calc_ev"):
+                    from engine import full_match_analysis as fma, overround as calc_ovr, expected_value, kelly_fraction
+
+                    manual_odds = {"home": manual_home, "draw": manual_draw, "away": manual_away}
+                    manual_analysis = fma(
+                        elo_home, elo_away, manual_odds,
+                        home_advantage=0.0,
+                        form_home=form_home,
+                        form_away=form_away
+                    )
+
+                    vig = manual_analysis["overround"]
+                    bm_label = bookmaker_name if bookmaker_name else "האתר"
+
+                    # בדיקת סבירות odds
+                    if vig > 15:
+                        st.markdown('<div class="alert-box alert-warn">⚠️ Overround גבוה מאוד — בדוק שהכנסת את המספרים נכון.</div>', unsafe_allow_html=True)
+                    elif vig < 1:
+                        st.markdown('<div class="alert-box alert-warn">⚠️ Overround נמוך מדי — ייתכן שגיאה בהכנסת הנתונים.</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div class="alert-box alert-info">✓ Overround {bm_label}: <b>{vig}%</b> — {"נמוך ✅" if vig < 6 else "ממוצע 🟡" if vig < 10 else "גבוה 🔴"}</div>', unsafe_allow_html=True)
+
+                    # טבלת השוואה מלאה
+                    outcomes = [
+                        (f"{home['name']} מנצחת", "home", manual_home),
+                        ("תיקו", "draw", manual_draw),
+                        (f"{away['name']} מנצחת", "away", manual_away),
+                    ]
+
+                    rows = []
+                    for label_o, key_o, odd_o in outcomes:
+                        ma = manual_analysis[key_o]
+                        rows.append({
+                            "תוצאה": label_o,
+                            "סיכוי המודל %": ma["our_prob"],
+                            f"יחס {bm_label}": odd_o,
+                            "סיכוי משתמע %": ma["implied_prob"],
+                            "יחס הוגן": ma["fair_odds"],
+                            "EV": ma["ev"],
+                            "Kelly %": ma["kelly_pct"],
+                            "Value?": "✅ כן" if ma["is_value"] else "❌ לא",
+                        })
+
+                    df_manual = pd.DataFrame(rows)
+                    st.dataframe(df_manual, use_container_width=True, hide_index=True)
+
+                    # המלצה
+                    value_bets = [(k, manual_analysis[k]) for k in ["home","draw","away"] if manual_analysis[k]["is_value"]]
+
+                    if value_bets:
+                        for vk, va in value_bets:
+                            v_name = {"home": f"{home['name']} מנצחת", "draw": "תיקו", "away": f"{away['name']} מנצחת"}[vk]
+                            v_odd  = {"home": manual_home, "draw": manual_draw, "away": manual_away}[vk]
+                            st.markdown(f"""
+                            <div class="kelly-rec">
+                                <div class="k-title">✅ VALUE BET — {bm_label}</div>
+                                <div class="k-value">{va['kelly_pct']}% מהתקציב</div>
+                                <div class="k-sub">על <b>{v_name}</b> · יחס {v_odd} · EV {va['ev']:.1%} · Quarter-Kelly (÷4 מקלי מלא)</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div class="alert-box alert-warn">❌ אין Value Bet — המודל לא מצא יתרון מתמטי ביחסים האלה.</div>', unsafe_allow_html=True)
 
                 # Most likely scores
+                st.markdown("---")
                 st.markdown("**תוצאות הסבירות ביותר:**")
                 score_cols = st.columns(5)
                 for i, (score, pct) in enumerate(analysis["top_scores"]):
@@ -593,7 +629,7 @@ with tab_rankings:
             return "color: #6b7a99"
 
         st.dataframe(
-            df_teams.style.map(color_elo, subset=["מדד Elo"]),
+            df_teams.style.applymap(color_elo, subset=["מדד Elo"]),
             use_container_width=True,
             height=600
         )
