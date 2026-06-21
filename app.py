@@ -315,13 +315,13 @@ with tab_intel:
   {val_str}
 </tr>"""
 
-                headers = "<th style='padding:8px;color:#6b7280;font-weight:500;font-size:11px;text-transform:uppercase;text-align:right'>תוצאה</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>סיכוי</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>יחס הוגן</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>Odds</th>"
+                headers = "<th style='padding:8px;color:#6b7280;font-weight:500;font-size:11px;text-align:right'>תוצאה</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>סיכוי</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>יחס הוגן</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>Odds</th>"
                 if live_od:
                     headers += "<th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>EV</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>Value?</th>"
 
                 st.markdown(f"""
 <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;direction:rtl;margin-bottom:8px">
-  <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;font-weight:600;font-size:14px">📊 הסתברויות</div>
+  <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;font-weight:600;font-size:14px;text-align:right">📊 הסתברויות</div>
   <table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="background:#f8fafc">{headers}</tr></thead>
     <tbody>{rows_html}</tbody>
@@ -335,18 +335,21 @@ with tab_intel:
                 scores_rows = ""
                 for score_str, pct in analysis["top_scores"]:
                     bar_w = min(int(pct * 5), 100)
-                    scores_rows += f"""
-<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc">
-  <span style="font-family:monospace;font-size:15px;font-weight:600;min-width:36px;text-align:right">{score_str}</span>
+                    home_name_short = home["name"]
+                away_name_short = away["name"]
+                scores_rows += f"""
+<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f8fafc;direction:rtl">
+  <span style="font-family:monospace;font-size:15px;font-weight:700;min-width:36px;text-align:right">{score_str}</span>
   <div style="flex:1;background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden">
     <div style="background:#3b82f6;width:{bar_w}%;height:100%;border-radius:4px"></div>
   </div>
-  <span style="font-size:12px;color:#6b7280;min-width:36px">{pct}%</span>
+  <span style="font-size:12px;color:#6b7280;min-width:32px;text-align:left">{pct}%</span>
 </div>"""
 
                 st.markdown(f"""
 <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;direction:rtl">
-  <div style="font-weight:600;font-size:14px;margin-bottom:12px">⚽ תוצאות סבירות</div>
+  <div style="font-weight:600;font-size:14px;margin-bottom:4px;text-align:right">⚽ תוצאות סבירות</div>
+  <div style="font-size:11px;color:#6b7280;margin-bottom:12px;text-align:right">{home_name_short} (ביתית) — {away_name_short} (אורחת)</div>
   {scores_rows}
 </div>
 """, unsafe_allow_html=True)
