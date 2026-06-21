@@ -37,6 +37,9 @@ from export_report import build_excel_report
 from decision_engine import get_flag_url, analyze_recent_form, calculate_team_score, generate_decision
 from lineup_analyzer import get_lineup_summary, calculate_lineup_factor
 from closing_line import get_clv_report, save_opening_odds
+from fatigue_analyzer import get_fatigue_summary
+from ensemble import ensemble_probabilities
+from calibration import run_calibration_check
 
 # ─── כותרת ─────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -70,6 +73,18 @@ tab_intel, tab_value, tab_rankings, tab_backtest, tab_glossary = st.tabs([
     "📖 מילון מושגים",
 ])
 
+
+
+def utc_to_israel(utc_str: str) -> str:
+    """ממיר שעת UTC לשעון ישראל (UTC+3 קיץ)."""
+    from datetime import datetime, timezone, timedelta
+    try:
+        # פורמט: "2026-06-21T16:00:00+00:00"
+        dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+        israel = dt + timedelta(hours=3)  # ישראל = UTC+3 בקיץ
+        return israel.strftime("%H:%M")
+    except Exception:
+        return utc_str[11:16]
 
 # ══════════════════════════════════════════════════════
 # TAB 1 — ניתוח משחק
@@ -160,8 +175,8 @@ with tab_intel:
                     if status in ("1H","2H","HT","ET","BT","P"):
                         st.caption("🔴 משחק חי כרגע")
                     elif status in ("NS","TBD"):
-                        match_time_str = smart_match["fixture"]["date"][11:16]
-                        st.caption(f"⏰ המשחק הקרוב — {match_time_str} UTC")
+                        match_time_str = utc_to_israel(smart_match["fixture"]["date"])
+                        st.caption(f"⏰ המשחק הקרוב — {match_time_str} 🇮🇱")
 
                 selected_name = st.selectbox("בחר משחק", match_names, index=default_idx, label_visibility="collapsed")
                 selected = match_options[selected_name]
@@ -175,7 +190,9 @@ with tab_intel:
             away = selected["teams"]["away"]
             venue = selected["fixture"]["venue"]["name"]
             city  = selected["fixture"]["venue"]["city"]
-            match_time = selected["fixture"]["date"][11:16]
+            match_time_utc = selected["fixture"]["date"][11:16]
+            match_time_il = utc_to_israel(selected["fixture"]["date"])
+            match_time = match_time_il
 
             with st.spinner("מנתח..."):
                 elo_h = get_team_elo(home["id"])
@@ -201,6 +218,20 @@ with tab_intel:
                 lineup_data = get_lineup_summary(fixture_id, home["id"], away["id"])
                 lineup_f_h = lineup_data["factor_home"]
                 lineup_f_a = lineup_data["factor_away"]
+
+                # ── Fatigue Factor ──
+                fatigue_data = get_fatigue_summary(home["id"], away["id"])
+                fatigue_f_h = fatigue_data["home"]["factor"]
+                fatigue_f_a = fatigue_data["away"]["factor"]
+
+                # ── Ensemble ──
+                ensemble_data = ensemble_probabilities(
+                    elo_h, elo_a, home["name"], away["name"],
+                    form_home=form_h_factor, form_away=form_a_factor,
+                    lineup_home=lineup_f_h, lineup_away=lineup_f_a,
+                    fatigue_home=fatigue_f_h, fatigue_away=fatigue_f_a,
+                    live_odds=live_od,
+                )
 
                 analysis = full_match_analysis(
                     elo_h, elo_a, live_od or {},
@@ -238,6 +269,8 @@ with tab_intel:
                 "lineup_data": lineup_data,
                 "lineup_f_h": lineup_f_h,
                 "lineup_f_a": lineup_f_a,
+                "fatigue_data": fatigue_data,
+                "ensemble_data": ensemble_data,
             }
 
         # ─── תצוגת תוצאות ───────────────────────────────────────
@@ -263,6 +296,8 @@ with tab_intel:
             lineup_data = md.get("lineup_data", {})
             lineup_f_h  = md.get("lineup_f_h", 1.0)
             lineup_f_a  = md.get("lineup_f_a", 1.0)
+            fatigue_data = md.get("fatigue_data", {})
+            ensemble_data = md.get("ensemble_data", {})
             d        = decision
             flag_h   = get_flag_url(home["name"])
             flag_a   = get_flag_url(away["name"])
@@ -274,7 +309,7 @@ with tab_intel:
             st.markdown(f"""
 <div style="border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin:16px 0;direction:rtl">
   <div style="text-align:center;font-size:12px;color:#6b7280;margin-bottom:16px">
-    🏟️ {md['venue']}, {md['city']} &nbsp;·&nbsp; {md['match_time']} UTC &nbsp;·&nbsp; {md['match_date']}
+    🏟️ {md['venue']}, {md['city']} &nbsp;·&nbsp; {md['match_time']} 🇮🇱 &nbsp;·&nbsp; {md['match_date']}
   </div>
   <table style="width:100%;border-collapse:collapse">
     <tr>
@@ -418,6 +453,49 @@ with tab_intel:
 
                 if lineup_data.get("has_confirmed_lineup"):
                     st.caption("✅ הרכב מאושר זמין")
+
+            # ── עייפות ──────────────────────────────────────────
+            if fatigue_data:
+                fat_h = fatigue_data.get("home", {})
+                fat_a = fatigue_data.get("away", {})
+                adv   = fatigue_data.get("relative_advantage")
+
+                f_h_label = fat_h.get("label","")
+                f_a_label = fat_a.get("label","")
+                f_h_color = fat_h.get("color","#6b7280")
+                f_a_color = fat_a.get("color","#6b7280")
+
+                if fat_h.get("days") is not None or fat_a.get("days") is not None:
+                    fh_col, fa_col = st.columns(2)
+                    fh_col.markdown(f'<span style="color:{f_h_color}">⏱️ **{home["name"]}:** {f_h_label}</span>', unsafe_allow_html=True)
+                    fa_col.markdown(f'<span style="color:{f_a_color}">⏱️ **{away["name"]}:** {f_a_label}</span>', unsafe_allow_html=True)
+                    if adv == "home":
+                        st.caption(f"💪 יתרון מנוחה ל-{home['name']}")
+                    elif adv == "away":
+                        st.caption(f"💪 יתרון מנוחה ל-{away['name']}")
+
+            # ── Ensemble — השוואת מודלים ─────────────────────────
+            if ensemble_data:
+                with st.expander("🔬 השוואת מודלים (Ensemble)"):
+                    ens = ensemble_data.get("ensemble", {})
+                    elo = ensemble_data.get("elo", {})
+                    fifa = ensemble_data.get("fifa", {})
+                    mkt = ensemble_data.get("market")
+                    weights = ensemble_data.get("weights", {})
+
+                    rows_ens = []
+                    for key_o, lbl in [("home",f"{home['name']} מנצחת"),("draw","תיקו"),("away",f"{away['name']} מנצחת")]:
+                        row = {
+                            "תוצאה": lbl,
+                            f"Elo+Poisson ({int(weights.get('elo',0)*100)}%)": f"{elo.get(key_o,0)*100:.1f}%",
+                            f"FIFA Ranking ({int(weights.get('fifa',0)*100)}%)": f"{fifa.get(key_o,0)*100:.1f}%",
+                            "🎯 Ensemble": f"{ens.get(key_o,0)*100:.1f}%",
+                        }
+                        if mkt:
+                            row[f"שוק ({int(weights.get('market',0)*100)}%)"] = f"{mkt.get(key_o,0)*100:.1f}%"
+                        rows_ens.append(row)
+                    st.dataframe(pd.DataFrame(rows_ens), hide_index=True, use_container_width=True)
+                    st.caption("Ensemble = ממוצע משוקלל של כל המודלים")
             col_probs, col_scores = st.columns([3, 2])
 
             with col_probs:
@@ -670,7 +748,25 @@ with tab_backtest:
                 st.error("⚠️ ROI שלילי. אל תשים כסף.")
 
     st.divider()
-    st.markdown("### 📈 Closing Line Value (CLV)")
+    st.markdown("### 🎯 Calibration — כיול המודל")
+    st.caption("כשאמרנו 60% — האם קרה 60%? זה המדד האמיתי לאיכות מודל.")
+    cal = run_calibration_check()
+    if "error" in cal:
+        st.info(f"⏳ {cal['error']}")
+    else:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Brier Score", cal["brier_score"], help="מתחת ל-0.20 = מודל טוב")
+        c2.metric("Bias כולל", f"{cal['overall_bias']:.1%}")
+        c3.metric("תחזיות שנבדקו", cal["n_predictions"])
+        st.info(cal["recommendation"])
+        if cal.get("buckets"):
+            rows_cal = []
+            for bname, bdata in cal["buckets"].items():
+                if bdata:
+                    label = {"low":"הסתברות נמוכה (<35%)","medium":"הסתברות בינונית (35-55%)","high":"הסתברות גבוהה (>55%)"}.get(bname,bname)
+                    rows_cal.append({"טווח": label, "צפוי %": bdata["predicted"], "בפועל %": bdata["actual"], "Bias": f"{bdata['bias']:.1%}", "מצב": bdata["status"], "n": bdata["n"]})
+            if rows_cal:
+                st.dataframe(pd.DataFrame(rows_cal), hide_index=True, use_container_width=True)
     st.caption("האם המודל מנצח את השוק? CLV חיובי = המודל זיהה ערך לפני שהשוק הגיע לאותה מסקנה.")
     clv = get_clv_report()
     if "error" in clv:
