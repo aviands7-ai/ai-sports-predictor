@@ -250,23 +250,9 @@ with tab_intel:
                 bars_html += "</div>"
                 st.markdown(bars_html, unsafe_allow_html=True)
 
-                # ── Odds אוטומטיים מ-The Odds API ──
-                st.markdown("---")
-                st.markdown("#### 💱 יחסי הימורים חיים")
-
-                odds_col1, odds_col2 = st.columns([2, 1])
-                with odds_col1:
-                    use_best_line = st.toggle("Best Line — הצג את הYחס הטוב ביותר מכל אתר", value=True)
-                with odds_col2:
-                    if st.button("🔄 רענן Odds", key="refresh_odds"):
-                        st.cache_data.clear()
-
-                # טעינת odds אוטומטית
+                # ── Odds + EV + Kelly — הכל אוטומטי מאחורי הקלעים ──
                 with st.spinner("שואב odds חיים..."):
-                    if use_best_line:
-                        live_odds_data = get_best_odds(home["name"], away["name"])
-                    else:
-                        live_odds_data = get_live_odds(home["name"], away["name"])
+                    live_odds_data = get_best_odds(home["name"], away["name"])
 
                 if live_odds_data:
                     st.session_state["last_live_odds"] = {
@@ -275,130 +261,56 @@ with tab_intel:
                         "away": live_odds_data.get("away"),
                         "bookmaker": live_odds_data.get("bookmaker", live_odds_data.get("home_book", "?")),
                     }
-                    # הצגת טבלת odds מכל הבוקמייקרים
-                    all_books = live_odds_data.get("all_books", [])
-                    if all_books:
-                        st.markdown("**📊 השוואת odds מכל האתרים:**")
-                        books_df = pd.DataFrame([{
-                            "אתר": b["name"],
-                            f"{home['name']}": b["home"],
-                            "תיקו": b["draw"],
-                            f"{away['name']}": b["away"],
-                        } for b in all_books])
-                        st.dataframe(books_df, use_container_width=True, hide_index=True)
+                    calc_odds = {"home": live_odds_data["home"], "draw": live_odds_data["draw"], "away": live_odds_data["away"]}
+                    auto_analysis = full_match_analysis(elo_home, elo_away, calc_odds, home_advantage=0.0, form_home=form_home, form_away=form_away)
+                    live_analysis = auto_analysis
+                    has_odds = True
+                else:
+                    live_analysis = analysis
+                    calc_odds = {}
+                    has_odds = False
 
-                    # Odds לחישוב
-                    calc_odds = {
-                        "home": live_odds_data["home"],
-                        "draw": live_odds_data["draw"],
-                        "away": live_odds_data["away"],
+                # ── טבלת ניתוח מרכזית ──
+                rows = []
+                for key_o, label_o in [("home", f"{home['name']} מנצחת"), ("draw", "תיקו"), ("away", f"{away['name']} מנצחת")]:
+                    la = live_analysis[key_o]
+                    row = {
+                        "תוצאה": label_o,
+                        "סיכוי %": f"{la['our_prob']}%",
+                        "יחס הוגן": la["fair_odds"],
                     }
+                    if has_odds:
+                        row["Odds"] = calc_odds[key_o]
+                        row["EV"] = f"+{la['ev']:.1%}" if la['ev'] > 0 else f"{la['ev']:.1%}"
+                        row["Kelly %"] = f"{la['kelly_pct']}%" if la['kelly_pct'] > 0 else "-"
+                        row["Value?"] = "✅" if la["is_value"] else "❌"
+                    rows.append(row)
 
-                    if use_best_line and live_odds_data.get("is_best_line"):
-                        last_upd = live_odds_data.get("last_update", "")[:16].replace("T", " ")
-                        st.markdown(f"""
-                        <div class="alert-box alert-info">
-                        ✅ <b>Best Line:</b>
-                        {home['name']} → <b>{calc_odds['home']}</b> ({live_odds_data.get('home_book','?')}) &nbsp;|&nbsp;
-                        תיקו → <b>{calc_odds['draw']}</b> ({live_odds_data.get('draw_book','?')}) &nbsp;|&nbsp;
-                        {away['name']} → <b>{calc_odds['away']}</b> ({live_odds_data.get('away_book','?')})
-                        <br><small style="color:#4a6088">עדכון אחרון: {last_upd}</small>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        bm = live_odds_data.get("bookmaker", "?")
-                        last_upd = live_odds_data.get("last_update", "")[:16].replace("T", " ")
-                        st.markdown(f'<div class="alert-box alert-info">✅ Odds מ-<b>{bm}</b> · עדכון: {last_upd}</div>', unsafe_allow_html=True)
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-                    # חישוב EV ו-Kelly אוטומטי
-                    auto_analysis = full_match_analysis(
-                        elo_home, elo_away, calc_odds,
-                        home_advantage=0.0,
-                        form_home=form_home,
-                        form_away=form_away
-                    )
-                    vig = auto_analysis["overround"]
+                # מקור ה-odds
+                if has_odds:
+                    bm = live_odds_data.get("home_book", live_odds_data.get("bookmaker", "?"))
+                    last_upd = live_odds_data.get("last_update", "")[:16].replace("T", " ")
+                    st.caption(f"Odds מ-{bm} · עדכון: {last_upd} · Overround: {live_analysis['overround']}%")
+                else:
+                    st.caption("⚠️ אין odds זמינים — מוצג יחס הוגן בלבד")
 
-                    # טבלת EV
-                    rows = []
-                    for key_o, label_o in [("home", f"{home['name']} מנצחת"), ("draw", "תיקו"), ("away", f"{away['name']} מנצחת")]:
-                        ma = auto_analysis[key_o]
-                        rows.append({
-                            "תוצאה": label_o,
-                            "סיכוי המודל %": ma["our_prob"],
-                            "Odds": calc_odds[key_o],
-                            "סיכוי משתמע %": ma["implied_prob"],
-                            "יחס הוגן": ma["fair_odds"],
-                            "EV": ma["ev"],
-                            "Kelly %": ma["kelly_pct"],
-                            "Value?": "✅" if ma["is_value"] else "❌",
-                        })
-                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-                    st.caption(f"Overround: {vig}% — {'✅ נמוך' if vig < 6 else '🟡 ממוצע' if vig < 10 else '🔴 גבוה'}")
-
-                    # המלצת Kelly
-                    value_bets = [(k, auto_analysis[k]) for k in ["home","draw","away"] if auto_analysis[k]["is_value"] and auto_analysis[k]["ev"] < 0.25]
+                # המלצת Value Bet
+                if has_odds:
+                    value_bets = [(k, live_analysis[k]) for k in ["home","draw","away"] if live_analysis[k]["is_value"] and live_analysis[k]["ev"] < 0.30]
                     if value_bets:
                         for vk, va in value_bets:
                             v_name = {"home": f"{home['name']} מנצחת", "draw": "תיקו", "away": f"{away['name']} מנצחת"}[vk]
-                            v_odd = calc_odds[vk]
                             st.markdown(f"""
                             <div class="kelly-rec">
                                 <div class="k-title">✅ VALUE BET</div>
                                 <div class="k-value">{va['kelly_pct']}% מהתקציב</div>
-                                <div class="k-sub">על <b>{v_name}</b> · יחס {v_odd} · EV {va['ev']:.1%} · Quarter-Kelly</div>
+                                <div class="k-sub">על <b>{v_name}</b> · יחס {calc_odds[vk]} · EV {va['ev']:.1%} · Quarter-Kelly</div>
                             </div>
                             """, unsafe_allow_html=True)
                     else:
-                        st.markdown('<div class="alert-box alert-warn">❌ אין Value Bet — אין יתרון מתמטי מובהק ביחסים הנוכחיים.</div>', unsafe_allow_html=True)
-
-                else:
-                    # Fallback — הכנסה ידנית
-                    st.markdown("""
-                    <div class="alert-box alert-warn">
-                    ⚠️ <b>Odds אוטומטיים לא זמינים עדיין</b> למשחק זה.<br>
-                    הכנס ידנית מ-Bet365 / William Hill / Pinnacle כדי לחשב EV ו-Kelly.
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    # הצג טבלת יחסים הוגנים כנקודת ייחוס
-                    st.markdown("**📌 יחסים הוגנים לפי המודל (ללא margin):**")
-                    ref_df = pd.DataFrame([
-                        {"תוצאה": f"{home['name']} מנצחת", "סיכוי %": analysis["home"]["our_prob"], "יחס הוגן": analysis["home"]["fair_odds"], "פירוש": "אם האתר מציע יותר — זה Value"},
-                        {"תוצאה": "תיקו",                   "סיכוי %": analysis["draw"]["our_prob"], "יחס הוגן": analysis["draw"]["fair_odds"], "פירוש": "אם האתר מציע יותר — זה Value"},
-                        {"תוצאה": f"{away['name']} מנצחת", "סיכוי %": analysis["away"]["our_prob"], "יחס הוגן": analysis["away"]["fair_odds"], "פירוש": "אם האתר מציע יותר — זה Value"},
-                    ])
-                    st.dataframe(ref_df, use_container_width=True, hide_index=True)
-
-                    st.markdown("**הכנס odds מהאתר שלך:**")
-                    mc1, mc2, mc3 = st.columns(3)
-                    with mc1:
-                        manual_home = st.number_input(f"יחס — {home['name']}", min_value=1.01, max_value=50.0, value=float(analysis["home"]["fair_odds"]), step=0.05, format="%.2f", key="mh")
-                    with mc2:
-                        manual_draw = st.number_input("יחס — תיקו", min_value=1.01, max_value=50.0, value=float(analysis["draw"]["fair_odds"]), step=0.05, format="%.2f", key="md")
-                    with mc3:
-                        manual_away = st.number_input(f"יחס — {away['name']}", min_value=1.01, max_value=50.0, value=float(analysis["away"]["fair_odds"]), step=0.05, format="%.2f", key="ma")
-                    bookmaker_name = st.text_input("שם האתר", placeholder="Bet365", key="bm_name")
-
-                    if st.button("⚡ חשב EV ו-Kelly", key="calc_ev"):
-                        from engine import full_match_analysis as fma
-                        manual_odds = {"home": manual_home, "draw": manual_draw, "away": manual_away}
-                        manual_analysis = fma(elo_home, elo_away, manual_odds, home_advantage=0.0, form_home=form_home, form_away=form_away)
-                        vig = manual_analysis["overround"]
-                        bm_label = bookmaker_name or "האתר"
-                        rows = []
-                        for key_o, label_o in [("home", f"{home['name']} מנצחת"), ("draw", "תיקו"), ("away", f"{away['name']} מנצחת")]:
-                            ma = manual_analysis[key_o]
-                            rows.append({"תוצאה": label_o, "סיכוי המודל %": ma["our_prob"], "Odds": manual_odds[key_o], "EV": ma["ev"], "Kelly %": ma["kelly_pct"], "Value?": "✅" if ma["is_value"] else "❌"})
-                        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-                        st.caption(f"Overround: {vig}%")
-                        value_bets = [(k, manual_analysis[k]) for k in ["home","draw","away"] if manual_analysis[k]["is_value"]]
-                        if value_bets:
-                            for vk, va in value_bets:
-                                v_name = {"home": f"{home['name']} מנצחת", "draw": "תיקו", "away": f"{away['name']} מנצחת"}[vk]
-                                st.markdown(f'<div class="kelly-rec"><div class="k-title">✅ VALUE BET — {bm_label}</div><div class="k-value">{va["kelly_pct"]}% מהתקציב</div><div class="k-sub">על {v_name} · יחס {manual_odds[vk]} · EV {va["ev"]:.1%}</div></div>', unsafe_allow_html=True)
-                        else:
-                            st.markdown('<div class="alert-box alert-warn">❌ אין Value Bet.</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="alert-box alert-warn">❌ אין Value Bet ביחסים הנוכחיים.</div>', unsafe_allow_html=True)
 
                 # Most likely scores
                 st.markdown("---")
