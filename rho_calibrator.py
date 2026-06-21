@@ -160,13 +160,16 @@ def load_matches_for_calibration() -> list[dict]:
 
 def get_current_rho() -> float:
     """
-    מחזיר את ה-rho הטוב ביותר הזמין:
-    - אם יש מספיק נתונים ושיפור מובהק → rho מכויל
-    - אחרת → DEFAULT_RHO (-0.13)
+    מחזיר את ה-rho הטוב ביותר הזמין.
+    תמיד מחזיר ערך בטוח — לעולם לא זורק exception.
     """
-    matches = load_matches_for_calibration()
-    result  = calibrate_rho(matches)
-    return result["recommended_rho"]
+    try:
+        matches = load_matches_for_calibration()
+        result  = calibrate_rho(matches)
+        return result.get("recommended_rho", DEFAULT_RHO)
+    except Exception as e:
+        print(f"[RhoCalibrator] שגיאה — חוזר ל-{DEFAULT_RHO}: {e}")
+        return DEFAULT_RHO
 
 
 if __name__ == "__main__":
