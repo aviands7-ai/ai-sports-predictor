@@ -20,7 +20,22 @@ SPORT_KEY = "soccer_fifa_world_cup"
 PREFERRED_BOOKMAKERS = ["pinnacle", "bet365", "williamhill", "draftkings", "fanduel"]
 
 
-def _get(endpoint: str, params: dict) -> dict | list | None:
+def _to_decimal(odd) -> float:
+    """
+    ממיר כל פורמט יחס ל-Decimal.
+    American: +150 → 2.50 | -200 → 1.50
+    Decimal: 1.01–30 → ללא שינוי
+    הגבול: מספר שלם >= 100 = American. מספר עשרוני < 30 = Decimal.
+    """
+    odd = float(odd)
+    # אם זה מספר שלם גדול מ-100 — זה American Odds
+    if odd == int(odd) and abs(odd) >= 100:
+        if odd > 0:
+            return round((odd / 100) + 1, 3)
+        else:
+            return round((100 / abs(odd)) + 1, 3)
+    # אחרת — כבר Decimal
+    return round(odd, 3)
     """קריאת API עם טיפול בשגיאות."""
     url = f"{BASE_URL}/{endpoint}"
     params["apiKey"] = ODDS_API_KEY
@@ -44,20 +59,23 @@ def _get(endpoint: str, params: dict) -> dict | list | None:
 
 def get_live_odds(home_team: str, away_team: str) -> dict | None:
     """
-    מביא odds חיים למשחק ספציפי לפי שמות הקבוצות.
-    מחזיר:
-    {
-        "home": float, "draw": float, "away": float,
-        "bookmaker": str, "last_update": str,
-        "all_books": [{"name": str, "home": float, "draw": float, "away": float}]
-    }
+    מביא odds חיים למשחק ספציפי.
+    מנסה EU/UK תחילה (Decimal), אחר-כך US עם המרה.
     """
+    # ניסיון ראשון: EU + UK (Pinnacle, Bet365, William Hill)
     data = _get(f"sports/{SPORT_KEY}/odds", {
-        "regions": "eu,uk",           # אירופה + בריטניה = Bet365, Pinnacle וכו'
-        "markets": "h2h",             # Match Winner
-        "oddsFormat": "decimal",      # יחסים עשרוניים
-        "bookmakers": ",".join(PREFERRED_BOOKMAKERS),
+        "regions": "eu,uk",
+        "markets": "h2h",
+        "oddsFormat": "decimal",
     })
+
+    # אם לא נמצא — נסה US
+    if not data:
+        data = _get(f"sports/{SPORT_KEY}/odds", {
+            "regions": "us",
+            "markets": "h2h",
+            "oddsFormat": "american",
+        })
 
     if not data:
         return None
@@ -102,22 +120,32 @@ def get_live_odds(home_team: str, away_team: str) -> dict | None:
                 draw_odd = outcomes.get("draw")
 
                 if home_odd and away_odd and draw_odd:
+                    # המרה ל-Decimal אם צריך
+                    home_d = _to_decimal(home_odd)
+                    draw_d = _to_decimal(draw_odd)
+                    away_d = _to_decimal(away_odd)
+
+                    # סינון: יחסים לא הגיוניים
+                    if home_d < 1.01 or draw_d < 1.01 or away_d < 1.01:
+                        continue
+                    if home_d > 50 or draw_d > 50 or away_d > 50:
+                        continue
+
                     all_books.append({
                         "name": bm.get("title", bm_name),
-                        "home": home_odd,
-                        "draw": draw_odd,
-                        "away": away_odd,
+                        "home": home_d,
+                        "draw": draw_d,
+                        "away": away_d,
                         "last_update": market.get("last_update", ""),
                     })
 
-                    # בחר לפי עדיפות
                     priority = PREFERRED_BOOKMAKERS.index(bm_name) if bm_name in PREFERRED_BOOKMAKERS else 999
                     if priority < best_priority:
                         best_priority = priority
                         best_odds = {
-                            "home": home_odd,
-                            "draw": draw_odd,
-                            "away": away_odd,
+                            "home": home_d,
+                            "draw": draw_d,
+                            "away": away_d,
                             "bookmaker": bm.get("title", bm_name),
                             "last_update": market.get("last_update", ""),
                             "all_books": all_books,
