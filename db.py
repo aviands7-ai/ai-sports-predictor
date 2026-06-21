@@ -25,10 +25,12 @@ def get_db() -> Client:
 
 # ─── Teams ─────────────────────────────────────────────────────────────────────
 
-def get_team_elo(team_id: int, default: float = 1500.0) -> float:
+def get_team_elo(team_id: int, default: float | None = 1500.0) -> float | None:
     try:
         res = get_db().table("teams").select("elo_rating").eq("id", team_id).execute()
-        return res.data[0]["elo_rating"] if res.data else default
+        if res.data:
+            return res.data[0]["elo_rating"]
+        return default
     except Exception as e:
         print(f"[DB] get_team_elo error: {e}")
         return default
