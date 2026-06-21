@@ -264,57 +264,51 @@ with tab_intel:
             bet = d.get("bet_recommendation")
             winner_flag = get_flag(d["winner_name"]) if d["winner"] != "draw" else "🤝"
 
-            reasons_html = "".join([f'<div style="margin:4px 0">✅ {r}</div>' for r in d["reasons"]]) or ""
-            risks_html   = "".join([f'<div style="margin:4px 0">⚠️ {r}</div>' for r in d["risks"]]) or ""
+            reasons_items = "".join([f'<div style="margin:4px 0;padding:6px 10px;background:#f0fdf4;border-radius:6px">✅ {r}</div>' for r in d["reasons"]])
+            risks_items   = "".join([f'<div style="margin:4px 0;padding:6px 10px;background:#fef2f2;border-radius:6px">⚠️ {r}</div>' for r in d["risks"]])
+            if not reasons_items:
+                reasons_items = '<div style="color:#9ca3af;font-size:0.83rem">אין נימוקים בולטים</div>'
+            if not risks_items:
+                risks_items = '<div style="color:#9ca3af;font-size:0.83rem">סיכון נמוך</div>'
 
-            bet_html = ""
             if bet:
-                bet_html = f"""
-                <div style="background:rgba(22,163,74,0.15);border:1px solid #16a34a;border-radius:10px;padding:14px;margin-top:12px">
-                    <div style="font-size:0.7rem;text-transform:uppercase;color:#16a34a;font-weight:700;margin-bottom:6px">💰 VALUE BET מזוהה</div>
-                    <div style="font-size:1.4rem;font-weight:700;color:#22c55e">{bet['kelly']}% מהתקציב</div>
-                    <div style="font-size:0.85rem;color:#86efac;margin-top:4px">
-                        על <b>{bet['outcome']}</b> · יחס {bet['odds']} · EV +{bet['ev']}% · יתרון {bet['edge']}% על יחס הוגן
-                    </div>
-                </div>"""
+                bet_section = f'<div style="background:rgba(22,163,74,0.12);border:1px solid #16a34a;border-radius:10px;padding:16px;margin-top:16px"><div style="font-size:0.7rem;text-transform:uppercase;color:#16a34a;font-weight:700;margin-bottom:8px">💰 VALUE BET מזוהה</div><div style="font-size:1.6rem;font-weight:800;color:#16a34a">{bet["kelly"]}% מהתקציב</div><div style="font-size:0.85rem;color:#374151;margin-top:6px">על <b>{bet["outcome"]}</b> &nbsp;·&nbsp; יחס {bet["odds"]} &nbsp;·&nbsp; EV +{bet["ev"]}% &nbsp;·&nbsp; יתרון {bet["edge"]}% על יחס הוגן</div></div>'
             elif live_od:
-                bet_html = '<div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:10px;padding:12px;margin-top:12px;font-size:0.85rem;color:#fca5a5">❌ אין Value Bet — היחסים לא מציעים יתרון מתמטי</div>'
+                bet_section = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px;margin-top:16px;font-size:0.85rem;color:#dc2626">❌ אין Value Bet — היחסים לא מציעים יתרון מתמטי</div>'
             else:
-                bet_html = '<div style="background:rgba(251,191,36,0.1);border:1px solid #f59e0b;border-radius:10px;padding:12px;margin-top:12px;font-size:0.85rem;color:#fcd34d">⚠️ אין odds זמינים — לא ניתן לחשב Value Bet</div>'
+                bet_section = '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px;margin-top:16px;font-size:0.85rem;color:#92400e">⚠️ אין odds זמינים — לא ניתן לחשב Value Bet</div>'
 
-            st.markdown(f"""
-            <div style="background:#fff;border:2px solid {d['confidence_color']};border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,0.08)">
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px">
+            decision_html = f"""
+            <div style="background:#ffffff;border:2px solid {d['confidence_color']};border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:16px">
                     <div>
-                        <div style="font-size:0.7rem;text-transform:uppercase;color:#6b7280;font-weight:700;letter-spacing:0.12em;margin-bottom:8px">🎯 המלצת המערכת</div>
-                        <div style="font-size:2.2rem;font-weight:800;color:#0f172a">{winner_flag} {d['winner_name']}</div>
-                        <div style="font-size:1rem;color:{d['confidence_color']};font-weight:600;margin-top:4px">
-                            {d['confidence_emoji']} ביטחון {d['confidence']} · {d['winner_prob']:.0f}% הסתברות
-                        </div>
+                        <div style="font-size:0.68rem;text-transform:uppercase;color:#6b7280;font-weight:700;letter-spacing:0.12em;margin-bottom:10px">🎯 המלצת המערכת</div>
+                        <div style="font-size:2.4rem;font-weight:800;color:#0f172a;line-height:1">{winner_flag} {d['winner_name']}</div>
+                        <div style="font-size:1rem;color:{d['confidence_color']};font-weight:600;margin-top:8px">{d['confidence_emoji']} ביטחון {d['confidence']} &nbsp;·&nbsp; {d['winner_prob']:.0f}% הסתברות</div>
                     </div>
-                    <div style="text-align:center;background:#f8fafc;border-radius:12px;padding:16px 24px">
-                        <div style="font-size:0.7rem;color:#6b7280;margin-bottom:4px">ציון כולל</div>
-                        <div style="font-size:2rem;font-weight:800;color:#1d4ed8">{score_home['total']:.0f}</div>
-                        <div style="font-size:0.75rem;color:#6b7280">{home['name']}</div>
-                        <div style="font-size:1.2rem;color:#94a3b8;margin:4px 0">vs</div>
-                        <div style="font-size:2rem;font-weight:800;color:#7c3aed">{score_away['total']:.0f}</div>
-                        <div style="font-size:0.75rem;color:#6b7280">{away['name']}</div>
+                    <div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 28px">
+                        <div style="font-size:0.68rem;color:#6b7280;margin-bottom:8px;text-transform:uppercase">ציון כולל</div>
+                        <div style="font-size:2.2rem;font-weight:800;color:#1d4ed8">{score_home['total']:.0f}</div>
+                        <div style="font-size:0.78rem;color:#6b7280;margin-bottom:4px">{home['name']}</div>
+                        <div style="font-size:1rem;color:#94a3b8">vs</div>
+                        <div style="font-size:2.2rem;font-weight:800;color:#7c3aed">{score_away['total']:.0f}</div>
+                        <div style="font-size:0.78rem;color:#6b7280">{away['name']}</div>
                     </div>
                 </div>
-
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                     <div>
-                        <div style="font-size:0.7rem;font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:6px">נימוקים לבחירה</div>
-                        <div style="font-size:0.83rem;color:#374151;line-height:1.8">{reasons_html or '<div style="color:#9ca3af">אין נימוקים בולטים</div>'}</div>
+                        <div style="font-size:0.68rem;font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:8px">נימוקים לבחירה</div>
+                        {reasons_items}
                     </div>
                     <div>
-                        <div style="font-size:0.7rem;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px">סיכונים</div>
-                        <div style="font-size:0.83rem;color:#374151;line-height:1.8">{risks_html or '<div style="color:#9ca3af">סיכון נמוך</div>'}</div>
+                        <div style="font-size:0.68rem;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:8px">סיכונים</div>
+                        {risks_items}
                     </div>
                 </div>
-                {bet_html}
+                {bet_section}
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(decision_html, unsafe_allow_html=True)
 
             # ══════════════════════════════════════════════════════
             # SECTION 3 — ניתוח קבוצות זה מול זה
