@@ -103,6 +103,7 @@ from db import get_all_teams, get_team_elo
 from backtest import run_full_backtest
 from odds_api import get_live_odds, get_best_odds
 from export_report import build_excel_report
+from decision_engine import get_flag, analyze_recent_form, calculate_team_score, generate_decision
 
 
 # ─── Header ────────────────────────────────────────────────────────────────────
@@ -166,32 +167,50 @@ with tab_intel:
             city = selected["fixture"]["venue"]["city"]
             match_time = selected["fixture"]["date"][11:16]
 
-            with st.spinner("שואב נתונים..."):
+            with st.spinner("מנתח משחק..."):
                 elo_home = get_team_elo(home["id"])
                 elo_away = get_team_elo(away["id"])
                 last_home = get_team_last_matches(home["id"], last=5)
                 last_away = get_team_last_matches(away["id"], last=5)
-                form_home = calculate_form_factor(last_home, home["id"])
-                form_away = calculate_form_factor(last_away, away["id"])
+                form_home_factor = calculate_form_factor(last_home, home["id"])
+                form_away_factor = calculate_form_factor(last_away, away["id"])
+                form_home = analyze_recent_form(last_home, home["id"])
+                form_away = analyze_recent_form(last_away, away["id"])
+                score_home = calculate_team_score(elo_home, form_home, form_home_factor)
+                score_away = calculate_team_score(elo_away, form_away, form_away_factor)
                 odds_data = get_odds(fixture_id)
-                odds_updated_at = odds_data.get("updated_at") if odds_data else None
                 odds = {k: odds_data[k] for k in ["home","draw","away"] if odds_data and k in odds_data} or {}
-                analysis = full_match_analysis(elo_home, elo_away, odds, home_advantage=0.0, form_home=form_home, form_away=form_away, odds_updated_at=odds_updated_at)
+                analysis = full_match_analysis(elo_home, elo_away, odds, home_advantage=0.0, form_home=form_home_factor, form_away=form_away_factor)
                 injuries = get_injuries(fixture_id)
                 h2h = get_head_to_head(home["id"], away["id"], last=10)
+                live_odds_data = get_best_odds(home["name"], away["name"])
+                live_od = None
+                if live_odds_data:
+                    live_od = {"home": live_odds_data.get("home"), "draw": live_odds_data.get("draw"), "away": live_odds_data.get("away")}
+                    st.session_state["last_live_odds"] = live_od
+                decision = generate_decision(
+                    home["name"], away["name"],
+                    score_home, score_away,
+                    form_home, form_away,
+                    {"home": analysis["home"]["our_prob"], "draw": analysis["draw"]["our_prob"], "away": analysis["away"]["our_prob"]},
+                    {"home": analysis["home"]["fair_odds"], "draw": analysis["draw"]["fair_odds"], "away": analysis["away"]["fair_odds"]},
+                    live_od, elo_home, elo_away,
+                )
 
-            # שמור ב-session_state כדי שכפתורים פנימיים יעבדו
             st.session_state["match_data"] = {
                 "fixture_id": fixture_id, "home": home, "away": away,
                 "venue": venue, "city": city, "match_time": match_time,
                 "elo_home": elo_home, "elo_away": elo_away,
-                "form_home": form_home, "form_away": form_away,
+                "form_home": form_home_factor, "form_away": form_away_factor,
                 "analysis": analysis, "injuries": injuries, "h2h": h2h,
+                "match_date": selected["fixture"]["date"][:10],
+                "form_home_data": form_home, "form_away_data": form_away,
+                "score_home": score_home, "score_away": score_away,
+                "decision": decision, "live_od": live_od,
             }
 
-        # הצג תוצאות אם יש נתונים ב-session_state
         if "match_data" in st.session_state:
-            md = st.session_state["match_data"]
+            md         = st.session_state["match_data"]
             home       = md["home"]
             away       = md["away"]
             venue      = md["venue"]
@@ -199,203 +218,239 @@ with tab_intel:
             match_time = md["match_time"]
             elo_home   = md["elo_home"]
             elo_away   = md["elo_away"]
-            form_home  = md["form_home"]
-            form_away  = md["form_away"]
+            form_home_factor = md["form_home"]
+            form_away_factor = md["form_away"]
             analysis   = md["analysis"]
             injuries   = md["injuries"]
             h2h        = md["h2h"]
+            form_home  = md["form_home_data"]
+            form_away  = md["form_away_data"]
+            score_home = md["score_home"]
+            score_away = md["score_away"]
+            decision   = md["decision"]
+            live_od    = md["live_od"]
 
-            # ─── Match Summary Row ──────────────────────────────────
-            c1, c2, c3, c4, c5, c6 = st.columns(6)
-            with c1:
-                st.markdown(f'<div class="metric-card"><div class="metric-value">{elo_home:.0f}</div><div class="metric-label">Elo — {home["name"]}</div></div>', unsafe_allow_html=True)
-            with c2:
-                st.markdown(f'<div class="metric-card"><div class="metric-value">{elo_away:.0f}</div><div class="metric-label">Elo — {away["name"]}</div></div>', unsafe_allow_html=True)
-            with c3:
-                form_h_color = "#10b981" if form_home > 1.0 else ("#ef4444" if form_home < 1.0 else "#60a5fa")
-                st.markdown(f'<div class="metric-card"><div class="metric-value" style="color:{form_h_color}">{form_home:.2f}x</div><div class="metric-label">טופס — {home["name"]}</div></div>', unsafe_allow_html=True)
-            with c4:
-                form_a_color = "#10b981" if form_away > 1.0 else ("#ef4444" if form_away < 1.0 else "#60a5fa")
-                st.markdown(f'<div class="metric-card"><div class="metric-value" style="color:{form_a_color}">{form_away:.2f}x</div><div class="metric-label">טופס — {away["name"]}</div></div>', unsafe_allow_html=True)
-            with c5:
-                st.markdown(f'<div class="metric-card"><div class="metric-value">{analysis["xg_home"]}</div><div class="metric-label">xG — {home["name"]}</div></div>', unsafe_allow_html=True)
-            with c6:
-                st.markdown(f'<div class="metric-card"><div class="metric-value">{analysis["xg_away"]}</div><div class="metric-label">xG — {away["name"]}</div></div>', unsafe_allow_html=True)
+            flag_h = get_flag(home["name"])
+            flag_a = get_flag(away["name"])
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_quant, col_intel = st.columns([3, 2])
+            # ══════════════════════════════════════════════════════
+            # SECTION 1 — כותרת משחק
+            # ══════════════════════════════════════════════════════
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#1e3a8a,#312e81);border-radius:16px;padding:24px 32px;margin-bottom:20px;text-align:center">
+                <div style="font-size:0.8rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:12px">
+                    🏟️ {venue}, {city} &nbsp;·&nbsp; {match_time} UTC
+                </div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:24px">
+                    <div style="text-align:center">
+                        <div style="font-size:3.5rem">{flag_h}</div>
+                        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin-top:6px">{home["name"]}</div>
+                        <div style="font-size:0.8rem;color:#93c5fd">Elo {elo_home:.0f}</div>
+                    </div>
+                    <div style="font-size:2rem;color:#60a5fa;font-weight:300">VS</div>
+                    <div style="text-align:center">
+                        <div style="font-size:3.5rem">{flag_a}</div>
+                        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin-top:6px">{away["name"]}</div>
+                        <div style="font-size:0.8rem;color:#93c5fd">Elo {elo_away:.0f}</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            # ─── Quant Column ───────────────────────────────────────
-            with col_quant:
-                st.markdown("#### 🧮 ניתוח מתמטי — תחזית המודל")
+            # ══════════════════════════════════════════════════════
+            # SECTION 2 — החלטת ההשקעה (הכי בולטת)
+            # ══════════════════════════════════════════════════════
+            d = decision
+            bet = d.get("bet_recommendation")
+            winner_flag = get_flag(d["winner_name"]) if d["winner"] != "draw" else "🤝"
 
-                # ── הסתברויות המודל (ללא תלות ב-odds) ──
-                probs_display = {
-                    "home": (analysis["home"]["our_prob"], f"{home['name']} מנצחת", analysis["home"]["fair_odds"]),
-                    "draw": (analysis["draw"]["our_prob"], "תיקו", analysis["draw"]["fair_odds"]),
-                    "away": (analysis["away"]["our_prob"], f"{away['name']} מנצחת", analysis["away"]["fair_odds"]),
-                }
-                bar_classes = {"home": "bar-home", "draw": "bar-draw", "away": "bar-away"}
+            reasons_html = "".join([f'<div style="margin:4px 0">✅ {r}</div>' for r in d["reasons"]]) or ""
+            risks_html   = "".join([f'<div style="margin:4px 0">⚠️ {r}</div>' for r in d["risks"]]) or ""
 
-                bars_html = '<div class="prob-bar-container">'
-                for key, (pct, label, fair) in probs_display.items():
-                    bars_html += f"""
-                    <div class="prob-row">
-                        <div class="prob-label">{label}</div>
-                        <div class="prob-bar-wrap">
-                            <div class="prob-bar-fill {bar_classes[key]}" style="width:{pct}%">{pct}%</div>
+            bet_html = ""
+            if bet:
+                bet_html = f"""
+                <div style="background:rgba(22,163,74,0.15);border:1px solid #16a34a;border-radius:10px;padding:14px;margin-top:12px">
+                    <div style="font-size:0.7rem;text-transform:uppercase;color:#16a34a;font-weight:700;margin-bottom:6px">💰 VALUE BET מזוהה</div>
+                    <div style="font-size:1.4rem;font-weight:700;color:#22c55e">{bet['kelly']}% מהתקציב</div>
+                    <div style="font-size:0.85rem;color:#86efac;margin-top:4px">
+                        על <b>{bet['outcome']}</b> · יחס {bet['odds']} · EV +{bet['ev']}% · יתרון {bet['edge']}% על יחס הוגן
+                    </div>
+                </div>"""
+            elif live_od:
+                bet_html = '<div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:10px;padding:12px;margin-top:12px;font-size:0.85rem;color:#fca5a5">❌ אין Value Bet — היחסים לא מציעים יתרון מתמטי</div>'
+            else:
+                bet_html = '<div style="background:rgba(251,191,36,0.1);border:1px solid #f59e0b;border-radius:10px;padding:12px;margin-top:12px;font-size:0.85rem;color:#fcd34d">⚠️ אין odds זמינים — לא ניתן לחשב Value Bet</div>'
+
+            st.markdown(f"""
+            <div style="background:#fff;border:2px solid {d['confidence_color']};border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,0.08)">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px">
+                    <div>
+                        <div style="font-size:0.7rem;text-transform:uppercase;color:#6b7280;font-weight:700;letter-spacing:0.12em;margin-bottom:8px">🎯 המלצת המערכת</div>
+                        <div style="font-size:2.2rem;font-weight:800;color:#0f172a">{winner_flag} {d['winner_name']}</div>
+                        <div style="font-size:1rem;color:{d['confidence_color']};font-weight:600;margin-top:4px">
+                            {d['confidence_emoji']} ביטחון {d['confidence']} · {d['winner_prob']:.0f}% הסתברות
                         </div>
-                        <span style="font-size:0.78rem;color:#6b7a99;width:80px;flex-shrink:0">יחס הוגן: {fair}</span>
+                    </div>
+                    <div style="text-align:center;background:#f8fafc;border-radius:12px;padding:16px 24px">
+                        <div style="font-size:0.7rem;color:#6b7280;margin-bottom:4px">ציון כולל</div>
+                        <div style="font-size:2rem;font-weight:800;color:#1d4ed8">{score_home['total']:.0f}</div>
+                        <div style="font-size:0.75rem;color:#6b7280">{home['name']}</div>
+                        <div style="font-size:1.2rem;color:#94a3b8;margin:4px 0">vs</div>
+                        <div style="font-size:2rem;font-weight:800;color:#7c3aed">{score_away['total']:.0f}</div>
+                        <div style="font-size:0.75rem;color:#6b7280">{away['name']}</div>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+                    <div>
+                        <div style="font-size:0.7rem;font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:6px">נימוקים לבחירה</div>
+                        <div style="font-size:0.83rem;color:#374151;line-height:1.8">{reasons_html or '<div style="color:#9ca3af">אין נימוקים בולטים</div>'}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.7rem;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px">סיכונים</div>
+                        <div style="font-size:0.83rem;color:#374151;line-height:1.8">{risks_html or '<div style="color:#9ca3af">סיכון נמוך</div>'}</div>
+                    </div>
+                </div>
+                {bet_html}
+            </div>
+            """, unsafe_allow_html=True)
+
+            # ══════════════════════════════════════════════════════
+            # SECTION 3 — ניתוח קבוצות זה מול זה
+            # ══════════════════════════════════════════════════════
+            col_h, col_a = st.columns(2)
+
+            def render_team_card(name, flag, elo, score, form, factor):
+                trend_icon = {"rising": "📈", "falling": "📉", "stable": "➡️", "unknown": "❓"}.get(form.get("trend",""), "❓")
+                trend_label = {"rising": "עלייה", "falling": "ירידה", "stable": "יציב", "unknown": "?"}.get(form.get("trend",""), "")
+
+                results = form.get("results", [])
+                result_html = ""
+                for r in results:
+                    color = {"W": "#16a34a", "D": "#d97706", "L": "#dc2626"}.get(r, "#94a3b8")
+                    label = {"W": "נ", "D": "ת", "L": "ה"}.get(r, "?")
+                    result_html += f'<span style="background:{color};color:#fff;border-radius:4px;padding:3px 8px;font-size:0.78rem;font-weight:700;margin:2px">{label}</span>'
+
+                # ציוני קטגוריות
+                cats = [
+                    ("עוצמה (Elo)", score["elo"]),
+                    ("טופס", score["form"]),
+                    ("התקפה", score["attack"]),
+                    ("הגנה", score["defense"]),
+                ]
+                bars_html = ""
+                for cat_name, cat_val in cats:
+                    bar_color = "#16a34a" if cat_val >= 65 else "#d97706" if cat_val >= 45 else "#dc2626"
+                    bars_html += f"""
+                    <div style="margin-bottom:8px">
+                        <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#6b7280;margin-bottom:3px">
+                            <span>{cat_name}</span><span style="font-weight:600;color:{bar_color}">{cat_val:.0f}</span>
+                        </div>
+                        <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
+                            <div style="background:{bar_color};width:{cat_val}%;height:100%;border-radius:4px"></div>
+                        </div>
                     </div>"""
-                bars_html += "</div>"
-                st.markdown(bars_html, unsafe_allow_html=True)
 
-                # ── Odds + EV + Kelly — הכל אוטומטי מאחורי הקלעים ──
-                with st.spinner("שואב odds חיים..."):
-                    live_odds_data = get_best_odds(home["name"], away["name"])
+                return f"""
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;height:100%">
+                    <div style="text-align:center;margin-bottom:16px">
+                        <div style="font-size:2.8rem">{flag}</div>
+                        <div style="font-size:1.1rem;font-weight:700;color:#0f172a">{name}</div>
+                        <div style="font-size:0.75rem;color:#6b7280">Elo {elo:.0f} · טופס {factor:.2f}x</div>
+                    </div>
 
-                if live_odds_data:
-                    st.session_state["last_live_odds"] = {
-                        "home": live_odds_data.get("home"),
-                        "draw": live_odds_data.get("draw"),
-                        "away": live_odds_data.get("away"),
-                        "bookmaker": live_odds_data.get("bookmaker", live_odds_data.get("home_book", "?")),
-                    }
-                    calc_odds = {"home": live_odds_data["home"], "draw": live_odds_data["draw"], "away": live_odds_data["away"]}
-                    auto_analysis = full_match_analysis(elo_home, elo_away, calc_odds, home_advantage=0.0, form_home=form_home, form_away=form_away)
-                    live_analysis = auto_analysis
-                    has_odds = True
-                else:
-                    live_analysis = analysis
-                    calc_odds = {}
-                    has_odds = False
+                    <div style="text-align:center;font-size:2rem;font-weight:800;color:#1d4ed8;margin-bottom:4px">{score['total']:.0f}<span style="font-size:1rem;color:#94a3b8">/100</span></div>
+                    <div style="text-align:center;font-size:0.75rem;color:#6b7280;margin-bottom:16px">ציון כולל</div>
 
-                # ── טבלת ניתוח מרכזית ──
+                    <div style="margin-bottom:16px">{bars_html}</div>
+
+                    <div style="border-top:1px solid #f1f5f9;padding-top:12px">
+                        <div style="font-size:0.7rem;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:8px">5 משחקים אחרונים</div>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">{result_html}</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+                            <div style="background:#f8fafc;border-radius:8px;padding:8px">
+                                <div style="font-size:1.1rem;font-weight:700;color:#16a34a">{form.get('avg_scored',0):.1f}</div>
+                                <div style="font-size:0.65rem;color:#6b7280">שערים/מ'</div>
+                            </div>
+                            <div style="background:#f8fafc;border-radius:8px;padding:8px">
+                                <div style="font-size:1.1rem;font-weight:700;color:#dc2626">{form.get('avg_conceded',0):.1f}</div>
+                                <div style="font-size:0.65rem;color:#6b7280">קבלה/מ'</div>
+                            </div>
+                            <div style="background:#f8fafc;border-radius:8px;padding:8px">
+                                <div style="font-size:1.1rem;font-weight:700;color:#7c3aed">{form.get('clean_sheets',0)}</div>
+                                <div style="font-size:0.65rem;color:#6b7280">שערים נקיים</div>
+                            </div>
+                        </div>
+                        <div style="text-align:center;margin-top:10px;font-size:0.82rem;color:#4b5563">
+                            {trend_icon} מגמה: <b>{trend_label}</b>
+                            {f' · {form.get("win_streak")} ניצחונות ברצף' if form.get("win_streak",0) >= 2 else ''}
+                        </div>
+                    </div>
+                </div>"""
+
+            with col_h:
+                st.markdown(render_team_card(home["name"], flag_h, elo_home, score_home, form_home, form_home_factor), unsafe_allow_html=True)
+            with col_a:
+                st.markdown(render_team_card(away["name"], flag_a, elo_away, score_away, form_away, form_away_factor), unsafe_allow_html=True)
+
+            # ══════════════════════════════════════════════════════
+            # SECTION 4 — הסתברויות ותוצאות
+            # ══════════════════════════════════════════════════════
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_probs, col_scores = st.columns([3, 2])
+
+            with col_probs:
+                st.markdown("#### 📊 הסתברויות ויחסים")
                 rows = []
                 for key_o, label_o in [("home", f"{home['name']} מנצחת"), ("draw", "תיקו"), ("away", f"{away['name']} מנצחת")]:
-                    la = live_analysis[key_o]
-                    row = {
-                        "תוצאה": label_o,
-                        "סיכוי %": f"{la['our_prob']}%",
-                        "יחס הוגן": la["fair_odds"],
-                    }
-                    if has_odds:
-                        row["Odds"] = calc_odds[key_o]
-                        row["EV"] = f"+{la['ev']:.1%}" if la['ev'] > 0 else f"{la['ev']:.1%}"
-                        row["Kelly %"] = f"{la['kelly_pct']}%" if la['kelly_pct'] > 0 else "-"
-                        row["Value?"] = "✅" if la["is_value"] else "❌"
+                    la = analysis[key_o]
+                    row = {"תוצאה": label_o, "סיכוי %": f"{la['our_prob']}%", "יחס הוגן": la["fair_odds"]}
+                    if live_od:
+                        odd = live_od.get(key_o, 0)
+                        if odd:
+                            ev = la["ev"]
+                            row["Odds"] = odd
+                            row["EV"] = f"+{ev:.1%}" if ev > 0 else f"{ev:.1%}"
+                            row["Value?"] = "✅" if la["is_value"] else "❌"
                     rows.append(row)
-
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                if live_od:
+                    bm = st.session_state.get("last_live_odds", {}).get("bookmaker", "?")
+                    st.caption(f"Odds מ-{bm}")
 
-                # מקור ה-odds
-                if has_odds:
-                    bm = live_odds_data.get("home_book", live_odds_data.get("bookmaker", "?"))
-                    last_upd = live_odds_data.get("last_update", "")[:16].replace("T", " ")
-                    st.caption(f"Odds מ-{bm} · עדכון: {last_upd} · Overround: {live_analysis['overround']}%")
-                else:
-                    st.caption("⚠️ אין odds זמינים — מוצג יחס הוגן בלבד")
+            with col_scores:
+                st.markdown("#### ⚽ תוצאות סבירות")
+                scores_html = ""
+                for score_str, pct in analysis["top_scores"]:
+                    scores_html += f"""
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#f8fafc;border-radius:8px;margin-bottom:6px;border:1px solid #e2e8f0">
+                        <span style="font-family:monospace;font-size:1.1rem;font-weight:700;color:#0f172a">{score_str}</span>
+                        <span style="font-size:0.85rem;color:#6b7280">{pct}%</span>
+                    </div>"""
+                st.markdown(scores_html, unsafe_allow_html=True)
 
-                # המלצת Value Bet
-                if has_odds:
-                    value_bets = [(k, live_analysis[k]) for k in ["home","draw","away"] if live_analysis[k]["is_value"] and live_analysis[k]["ev"] < 0.30]
-                    if value_bets:
-                        for vk, va in value_bets:
-                            v_name = {"home": f"{home['name']} מנצחת", "draw": "תיקו", "away": f"{away['name']} מנצחת"}[vk]
-                            st.markdown(f"""
-                            <div class="kelly-rec">
-                                <div class="k-title">✅ VALUE BET</div>
-                                <div class="k-value">{va['kelly_pct']}% מהתקציב</div>
-                                <div class="k-sub">על <b>{v_name}</b> · יחס {calc_odds[vk]} · EV {va['ev']:.1%} · Quarter-Kelly</div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="alert-box alert-warn">❌ אין Value Bet ביחסים הנוכחיים.</div>', unsafe_allow_html=True)
+            # ══════════════════════════════════════════════════════
+            # SECTION 5 — מודיעין + ייצוא
+            # ══════════════════════════════════════════════════════
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_intel, col_export = st.columns([2, 1])
 
-                # Most likely scores
-                st.markdown("---")
-                st.markdown("**⚽ תוצאות הסבירות ביותר:**")
-                score_cols = st.columns(5)
-                for i, (score, pct) in enumerate(analysis["top_scores"]):
-                    with score_cols[i]:
-                        st.markdown(f'<div class="score-item"><div class="score-result">{score}</div><div class="score-prob">{pct}%</div></div>', unsafe_allow_html=True)
-
-                # ── כפתור ייצוא Excel — הורדה ישירה ──
-                st.markdown("---")
-                live_od = st.session_state.get("last_live_odds")
-
-                # בנה את ה-Excel מראש כדי שהורדה תהיה ישירה
-                export_match = {
-                    "home_name":  home["name"],
-                    "away_name":  away["name"],
-                    "match_date": md.get("match_date", selected["fixture"]["date"][:10] if "fixture" in selected else ""),
-                    "venue":      venue,
-                    "city":       city,
-                    "elo_home":   elo_home,
-                    "elo_away":   elo_away,
-                    "form_home":  form_home,
-                    "form_away":  form_away,
-                    "xg_home":    analysis["xg_home"],
-                    "xg_away":    analysis["xg_away"],
-                    "probs": {
-                        "home": analysis["home"]["our_prob"],
-                        "draw": analysis["draw"]["our_prob"],
-                        "away": analysis["away"]["our_prob"],
-                    },
-                    "fair_odds": {
-                        "home": analysis["home"]["fair_odds"],
-                        "draw": analysis["draw"]["fair_odds"],
-                        "away": analysis["away"]["fair_odds"],
-                    },
-                    "live_odds": live_od,
-                    "ev": {
-                        "home": live_od and analysis["home"]["ev"] or 0,
-                        "draw": live_od and analysis["draw"]["ev"] or 0,
-                        "away": live_od and analysis["away"]["ev"] or 0,
-                    },
-                    "kelly": {
-                        "home": live_od and analysis["home"]["kelly_pct"] or 0,
-                        "draw": live_od and analysis["draw"]["kelly_pct"] or 0,
-                        "away": live_od and analysis["away"]["kelly_pct"] or 0,
-                    },
-                    "top_scores":    analysis["top_scores"],
-                    "injuries_home": [inj["player"]["name"] for inj in injuries if inj["team"]["id"] == home["id"]],
-                    "injuries_away": [inj["player"]["name"] for inj in injuries if inj["team"]["id"] == away["id"]],
-                    "h2h": [{"date": g["fixture"]["date"][:10], "home": g["teams"]["home"]["name"], "result": f"{g['goals']['home'] or 0}-{g['goals']['away'] or 0}", "away": g["teams"]["away"]["name"]} for g in h2h[-5:]] if h2h else [],
-                }
-
-                vb_data  = st.session_state.get("last_value_bets", [])
-                elo_data = get_all_teams()
-                excel_bytes = build_excel_report(export_match, vb_data, elo_data)
-                fname = f"WC2026_{home['name']}_vs_{away['name']}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx"
-
-                st.download_button(
-                    label="📥 ייצא דוח Excel",
-                    data=excel_bytes,
-                    file_name=fname,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_excel",
-                    use_container_width=True,
-                )
-
-            # ─── Intel Column ───────────────────────────────────────
             with col_intel:
-                st.markdown("#### 🕵️ מודיעין שטח")
-
-                # Venue
-                st.markdown(f'<div class="intel-box"><div class="intel-title">אצטדיון</div>🏟️ {venue}, {city} · {match_time}</div>', unsafe_allow_html=True)
-
-                # Injuries
+                # פציעות
                 home_inj = [i["player"]["name"] for i in injuries if i["team"]["id"] == home["id"]]
                 away_inj = [i["player"]["name"] for i in injuries if i["team"]["id"] == away["id"]]
+                if home_inj or away_inj:
+                    st.markdown("**🚑 פצועים ונעדרים:**")
+                    inj_cols = st.columns(2)
+                    with inj_cols[0]:
+                        for p in home_inj:
+                            st.markdown(f"🤕 {p} ({home['name']})")
+                    with inj_cols[1]:
+                        for p in away_inj:
+                            st.markdown(f"🤕 {p} ({away['name']})")
 
-                inj_home_html = "".join([f"<div>🤕 {p}</div>" for p in home_inj]) or "<div style='color:#4a6088'>ללא נפגעים מדווחים</div>"
-                inj_away_html = "".join([f"<div>🤕 {p}</div>" for p in away_inj]) or "<div style='color:#4a6088'>ללא נפגעים מדווחים</div>"
-
-                st.markdown(f'<div class="intel-box"><div class="intel-title">פצועים — {home["name"]}</div>{inj_home_html}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="intel-box"><div class="intel-title">פצועים — {away["name"]}</div>{inj_away_html}</div>', unsafe_allow_html=True)
-
-                # H2H — בתוך expander כדי לא לתפוס מקום
+                # H2H
                 if h2h:
                     h2h_records = []
                     for g in h2h[-5:]:
@@ -409,6 +464,33 @@ with tab_intel:
                         })
                     with st.expander(f"⚔️ עימותים ישירים ({len(h2h_records)} אחרונים)"):
                         st.dataframe(pd.DataFrame(h2h_records), use_container_width=True, hide_index=True)
+
+            with col_export:
+                st.markdown("**📥 ייצוא:**")
+                export_match = {
+                    "home_name": home["name"], "away_name": away["name"],
+                    "match_date": md.get("match_date",""), "venue": venue, "city": city,
+                    "elo_home": elo_home, "elo_away": elo_away,
+                    "form_home": form_home_factor, "form_away": form_away_factor,
+                    "xg_home": analysis["xg_home"], "xg_away": analysis["xg_away"],
+                    "probs": {"home": analysis["home"]["our_prob"], "draw": analysis["draw"]["our_prob"], "away": analysis["away"]["our_prob"]},
+                    "fair_odds": {"home": analysis["home"]["fair_odds"], "draw": analysis["draw"]["fair_odds"], "away": analysis["away"]["fair_odds"]},
+                    "live_odds": live_od,
+                    "ev": {"home": analysis["home"]["ev"] if live_od else 0, "draw": analysis["draw"]["ev"] if live_od else 0, "away": analysis["away"]["ev"] if live_od else 0},
+                    "kelly": {"home": analysis["home"]["kelly_pct"] if live_od else 0, "draw": analysis["draw"]["kelly_pct"] if live_od else 0, "away": analysis["away"]["kelly_pct"] if live_od else 0},
+                    "top_scores": analysis["top_scores"],
+                    "injuries_home": home_inj, "injuries_away": away_inj,
+                    "h2h": [{"date": g["fixture"]["date"][:10], "home": g["teams"]["home"]["name"], "result": f"{g['goals']['home'] or 0}-{g['goals']['away'] or 0}", "away": g["teams"]["away"]["name"]} for g in h2h[-5:]] if h2h else [],
+                }
+                excel_bytes = build_excel_report(export_match, st.session_state.get("last_value_bets",[]), get_all_teams())
+                st.download_button(
+                    label="📥 הורד דוח Excel",
+                    data=excel_bytes,
+                    file_name=f"WC2026_{home['name']}_vs_{away['name']}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_excel",
+                    use_container_width=True,
+                )
 
 
 # ══════════════════════════════════════════════════════
