@@ -30,7 +30,7 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background: #0a0e1a;
+    background: #0f1623;
     color: #e8eaf0;
 }
 
@@ -40,219 +40,81 @@ h1, h2, h3 {
 
 /* Header */
 .main-header {
-    background: linear-gradient(135deg, #0d1b3e 0%, #1a0a2e 100%);
-    border: 1px solid #1e3a6e;
+    background: linear-gradient(135deg, #1a2d5a 0%, #2a1550 100%);
+    border: 1px solid #2e4a8e;
     border-radius: 16px;
     padding: 32px 40px;
     margin-bottom: 32px;
-    position: relative;
-    overflow: hidden;
 }
-.main-header::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle at 30% 50%, rgba(30, 100, 200, 0.08) 0%, transparent 60%);
-    pointer-events: none;
-}
-.main-header h1 {
-    font-size: 2.2rem;
-    font-weight: 700;
-    color: #ffffff;
-    margin: 0 0 8px 0;
-    letter-spacing: -0.5px;
-}
-.main-header p {
-    color: #8899bb;
-    margin: 0;
-    font-size: 0.95rem;
-}
+.main-header h1 { font-size: 2.2rem; font-weight: 700; color: #ffffff; margin: 0 0 8px 0; }
+.main-header p  { color: #aab8d4; margin: 0; font-size: 0.95rem; }
 
 /* Metric cards */
 .metric-card {
-    background: #111827;
-    border: 1px solid #1f2d4a;
+    background: #1a2540;
+    border: 1px solid #2e4070;
     border-radius: 12px;
     padding: 20px 24px;
     text-align: center;
 }
-.metric-value {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 2rem;
-    font-weight: 700;
-    color: #60a5fa;
-    line-height: 1;
-    margin-bottom: 6px;
-}
-.metric-label {
-    font-size: 0.78rem;
-    color: #6b7a99;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
+.metric-value { font-family: 'Space Grotesk', sans-serif; font-size: 2rem; font-weight: 700; color: #60a5fa; line-height: 1; margin-bottom: 6px; }
+.metric-label { font-size: 0.78rem; color: #8899bb; text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* Probability bars */
-.prob-bar-container {
-    background: #111827;
-    border: 1px solid #1f2d4a;
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 16px;
-}
-.prob-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
-}
-.prob-label {
-    font-size: 0.85rem;
-    color: #8899bb;
-    width: 60px;
-    text-align: right;
-    flex-shrink: 0;
-}
-.prob-bar-wrap {
-    flex: 1;
-    background: #1a2234;
-    border-radius: 6px;
-    height: 28px;
-    overflow: hidden;
-    position: relative;
-}
-.prob-bar-fill {
-    height: 100%;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    padding: 0 10px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: #fff;
-    transition: width 0.8s ease;
-}
+.prob-bar-container { background: #1a2540; border: 1px solid #2e4070; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+.prob-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.prob-label { font-size: 0.85rem; color: #aab8d4; width: 60px; text-align: right; flex-shrink: 0; }
+.prob-bar-wrap { flex: 1; background: #243050; border-radius: 6px; height: 28px; overflow: hidden; }
+.prob-bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #fff; }
 .bar-home { background: linear-gradient(90deg, #1d4ed8, #3b82f6); }
 .bar-draw { background: linear-gradient(90deg, #6b21a8, #a855f7); }
 .bar-away { background: linear-gradient(90deg, #0f766e, #14b8a6); }
 
 /* Value badge */
-.value-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-}
-.value-positive { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
-.value-negative { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+.value-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+.value-positive { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); }
+.value-negative { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
 
 /* Score matrix */
-.score-item {
-    background: #111827;
-    border: 1px solid #1f2d4a;
-    border-radius: 8px;
-    padding: 10px 14px;
-    text-align: center;
-    margin-bottom: 8px;
-}
+.score-item { background: #1a2540; border: 1px solid #2e4070; border-radius: 8px; padding: 10px 14px; text-align: center; margin-bottom: 8px; }
 .score-result { font-family: 'Space Grotesk', monospace; font-size: 1.1rem; font-weight: 700; color: #e8eaf0; }
-.score-prob { font-size: 0.75rem; color: #6b7a99; margin-top: 2px; }
+.score-prob { font-size: 0.75rem; color: #8899bb; margin-top: 2px; }
 
 /* Intel section */
-.intel-box {
-    background: #0f1927;
-    border: 1px solid #1f2d4a;
-    border-radius: 10px;
-    padding: 16px 20px;
-    margin-bottom: 12px;
-}
-.intel-title {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #4a6088;
-    margin-bottom: 10px;
-}
+.intel-box { background: #162035; border: 1px solid #2e4070; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; }
+.intel-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: #6688bb; margin-bottom: 10px; }
 
 /* Tabs */
-.stTabs [data-baseweb="tab-list"] {
-    background: #111827;
-    border-radius: 10px;
-    padding: 4px;
-    gap: 4px;
-    border: 1px solid #1f2d4a;
-}
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px;
-    color: #6b7a99;
-    font-weight: 500;
-    font-size: 0.9rem;
-    padding: 8px 20px;
-}
-.stTabs [aria-selected="true"] {
-    background: #1d4ed8 !important;
-    color: #ffffff !important;
-}
-
-/* Data tables */
-.dataframe { border: none !important; }
-.dataframe thead tr th {
-    background: #111827 !important;
-    color: #6b7a99 !important;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border: none !important;
-}
-.dataframe tbody tr td {
-    background: #0a0e1a !important;
-    color: #c8d0e0 !important;
-    border-bottom: 1px solid #1a2234 !important;
-    font-size: 0.88rem;
-}
+.stTabs [data-baseweb="tab-list"] { background: #1a2540; border-radius: 10px; padding: 4px; gap: 4px; border: 1px solid #2e4070; }
+.stTabs [data-baseweb="tab"] { border-radius: 8px; color: #8899bb; font-weight: 500; font-size: 0.9rem; padding: 8px 20px; }
+.stTabs [aria-selected="true"] { background: #1d4ed8 !important; color: #ffffff !important; }
 
 /* Buttons */
 .stButton > button {
     background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-    padding: 10px 24px !important;
-    font-size: 0.9rem !important;
-    transition: opacity 0.2s !important;
+    color: white !important; border: none !important; border-radius: 10px !important;
+    font-weight: 600 !important; padding: 10px 24px !important; font-size: 0.9rem !important;
 }
-.stButton > button:hover {
-    opacity: 0.88 !important;
+.stDownloadButton > button {
+    background: linear-gradient(135deg, #059669, #10b981) !important;
+    color: white !important; border: none !important; border-radius: 10px !important;
+    font-weight: 700 !important; padding: 12px 24px !important; font-size: 1rem !important;
 }
 
-/* Warning / success boxes */
-.alert-box {
-    border-radius: 10px;
-    padding: 14px 18px;
-    margin: 12px 0;
-    font-size: 0.88rem;
-    line-height: 1.5;
-}
-.alert-value { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #6ee7b7; }
-.alert-warn { background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.2); color: #fbbf24; }
-.alert-info { background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); color: #93c5fd; }
+/* Alert boxes */
+.alert-box { border-radius: 10px; padding: 14px 18px; margin: 12px 0; font-size: 0.88rem; line-height: 1.5; }
+.alert-value { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); color: #6ee7b7; }
+.alert-warn  { background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.3); color: #fcd34d; }
+.alert-info  { background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; }
 
 /* Kelly recommendation */
-.kelly-rec {
-    background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03));
-    border: 1px solid rgba(16,185,129,0.2);
-    border-radius: 10px;
-    padding: 16px 20px;
-    margin-top: 12px;
-}
-.kelly-rec .k-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: #059669; margin-bottom: 8px; }
-.kelly-rec .k-value { font-family: 'Space Grotesk'; font-size: 1.8rem; font-weight: 700; color: #10b981; }
-.kelly-rec .k-sub { font-size: 0.8rem; color: #6b7a99; margin-top: 4px; }
+.kelly-rec { background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.05)); border: 1px solid rgba(16,185,129,0.3); border-radius: 10px; padding: 16px 20px; margin-top: 12px; }
+.kelly-rec .k-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: #10b981; margin-bottom: 8px; }
+.kelly-rec .k-value { font-family: 'Space Grotesk'; font-size: 1.8rem; font-weight: 700; color: #34d399; }
+.kelly-rec .k-sub   { font-size: 0.8rem; color: #8899bb; margin-top: 4px; }
+
+/* DataFrames */
+[data-testid="stDataFrame"] { border-radius: 8px; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -547,71 +409,69 @@ with tab_intel:
 
                 # Most likely scores
                 st.markdown("---")
-                st.markdown("**תוצאות הסבירות ביותר:**")
+                st.markdown("**⚽ תוצאות הסבירות ביותר:**")
                 score_cols = st.columns(5)
                 for i, (score, pct) in enumerate(analysis["top_scores"]):
                     with score_cols[i]:
                         st.markdown(f'<div class="score-item"><div class="score-result">{score}</div><div class="score-prob">{pct}%</div></div>', unsafe_allow_html=True)
 
-                # ── כפתור ייצוא Excel ──
+                # ── כפתור ייצוא Excel — הורדה ישירה ──
                 st.markdown("---")
-                if st.button("📥 ייצא דוח Excel מלא", key="export_btn"):
-                    with st.spinner("בונה דוח..."):
-                        live_od = st.session_state.get("last_live_odds")
-                        export_match = {
-                            "home_name":  home["name"],
-                            "away_name":  away["name"],
-                            "match_date": md.get("match_date", ""),
-                            "venue":      md.get("venue", ""),
-                            "city":       md.get("city", ""),
-                            "elo_home":   elo_home,
-                            "elo_away":   elo_away,
-                            "form_home":  form_home,
-                            "form_away":  form_away,
-                            "xg_home":    analysis["xg_home"],
-                            "xg_away":    analysis["xg_away"],
-                            "probs": {
-                                "home": analysis["home"]["our_prob"],
-                                "draw": analysis["draw"]["our_prob"],
-                                "away": analysis["away"]["our_prob"],
-                            },
-                            "fair_odds": {
-                                "home": analysis["home"]["fair_odds"],
-                                "draw": analysis["draw"]["fair_odds"],
-                                "away": analysis["away"]["fair_odds"],
-                            },
-                            "live_odds": live_od,
-                            "ev": {
-                                "home": analysis["home"]["ev"],
-                                "draw": analysis["draw"]["ev"],
-                                "away": analysis["away"]["ev"],
-                            },
-                            "kelly": {
-                                "home": analysis["home"]["kelly_pct"],
-                                "draw": analysis["draw"]["kelly_pct"],
-                                "away": analysis["away"]["kelly_pct"],
-                            },
-                            "top_scores": analysis["top_scores"],
-                            "injuries_home": [i["player"]["name"] for i in injuries if i["team"]["id"] == home["id"]],
-                            "injuries_away": [i["player"]["name"] for i in injuries if i["team"]["id"] == away["id"]],
-                            "h2h": [{"date": g["fixture"]["date"][:10], "home": g["teams"]["home"]["name"], "result": f"{g['goals']['home'] or 0}-{g['goals']['away'] or 0}", "away": g["teams"]["away"]["name"]} for g in h2h[-5:]] if h2h else [],
-                        }
+                live_od = st.session_state.get("last_live_odds")
 
-                        # Value Bets מ-session
-                        vb_data = st.session_state.get("last_value_bets", [])
+                # בנה את ה-Excel מראש כדי שהורדה תהיה ישירה
+                export_match = {
+                    "home_name":  home["name"],
+                    "away_name":  away["name"],
+                    "match_date": md.get("match_date", selected["fixture"]["date"][:10] if "fixture" in selected else ""),
+                    "venue":      venue,
+                    "city":       city,
+                    "elo_home":   elo_home,
+                    "elo_away":   elo_away,
+                    "form_home":  form_home,
+                    "form_away":  form_away,
+                    "xg_home":    analysis["xg_home"],
+                    "xg_away":    analysis["xg_away"],
+                    "probs": {
+                        "home": analysis["home"]["our_prob"],
+                        "draw": analysis["draw"]["our_prob"],
+                        "away": analysis["away"]["our_prob"],
+                    },
+                    "fair_odds": {
+                        "home": analysis["home"]["fair_odds"],
+                        "draw": analysis["draw"]["fair_odds"],
+                        "away": analysis["away"]["fair_odds"],
+                    },
+                    "live_odds": live_od,
+                    "ev": {
+                        "home": live_od and analysis["home"]["ev"] or 0,
+                        "draw": live_od and analysis["draw"]["ev"] or 0,
+                        "away": live_od and analysis["away"]["ev"] or 0,
+                    },
+                    "kelly": {
+                        "home": live_od and analysis["home"]["kelly_pct"] or 0,
+                        "draw": live_od and analysis["draw"]["kelly_pct"] or 0,
+                        "away": live_od and analysis["away"]["kelly_pct"] or 0,
+                    },
+                    "top_scores":    analysis["top_scores"],
+                    "injuries_home": [inj["player"]["name"] for inj in injuries if inj["team"]["id"] == home["id"]],
+                    "injuries_away": [inj["player"]["name"] for inj in injuries if inj["team"]["id"] == away["id"]],
+                    "h2h": [{"date": g["fixture"]["date"][:10], "home": g["teams"]["home"]["name"], "result": f"{g['goals']['home'] or 0}-{g['goals']['away'] or 0}", "away": g["teams"]["away"]["name"]} for g in h2h[-5:]] if h2h else [],
+                }
 
-                        # Elo Rankings
-                        elo_data = get_all_teams()
+                vb_data  = st.session_state.get("last_value_bets", [])
+                elo_data = get_all_teams()
+                excel_bytes = build_excel_report(export_match, vb_data, elo_data)
+                fname = f"WC2026_{home['name']}_vs_{away['name']}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx"
 
-                        excel_bytes = build_excel_report(export_match, vb_data, elo_data)
-
-                    st.download_button(
-                        label="⬇️ הורד Excel",
-                        data=excel_bytes,
-                        file_name=f"WC2026_{home['name']}_vs_{away['name']}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel"
-                    )
+                st.download_button(
+                    label="📥 ייצא דוח Excel",
+                    data=excel_bytes,
+                    file_name=fname,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_excel",
+                    use_container_width=True,
+                )
 
             # ─── Intel Column ───────────────────────────────────────
             with col_intel:
