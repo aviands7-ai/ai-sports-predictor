@@ -24,10 +24,16 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Space+Grotesk:wght@500;700&display=swap');
 
-html, body, [class*="css"] {
+html, body, [class*="css"], .stMarkdown, .stMarkdown p, .stMarkdown div {
     font-family: 'Inter', sans-serif;
     direction: rtl;
+    text-align: right;
 }
+
+/* כיוון כל המרכיבים */
+.stMarkdown { direction: rtl; text-align: right; }
+.element-container { direction: rtl; }
+div[data-testid="column"] { direction: rtl; }
 
 /* Header */
 .main-header {
@@ -187,8 +193,15 @@ with tab_intel:
                 live_odds_data = get_best_odds(home["name"], away["name"])
                 live_od = None
                 if live_odds_data:
-                    live_od = {"home": live_odds_data.get("home"), "draw": live_odds_data.get("draw"), "away": live_odds_data.get("away")}
-                    st.session_state["last_live_odds"] = live_od
+                    # סינון odds לא הגיוניים — יחס מעל 30 = כנראה American odds לא מומר
+                    raw = {"home": live_odds_data.get("home"), "draw": live_odds_data.get("draw"), "away": live_odds_data.get("away")}
+                    if all(v and 1.01 <= v <= 25 for v in raw.values()):
+                        live_od = raw
+                        # חישוב מחדש עם ה-odds האמיתיים
+                        analysis = full_match_analysis(elo_home, elo_away, live_od, home_advantage=0.0, form_home=form_home_factor, form_away=form_away_factor)
+                        st.session_state["last_live_odds"] = {"bookmaker": live_odds_data.get("home_book","?"), **live_od}
+                    else:
+                        live_od = None  # odds שבורים — מתעלמים
                 decision = generate_decision(
                     home["name"], away["name"],
                     score_home, score_away,
@@ -282,32 +295,41 @@ with tab_intel:
                 bet_section = '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px;margin-top:16px;font-size:0.85rem;color:#92400e">⚠️ אין odds זמינים — לא ניתן לחשב Value Bet</div>'
 
             decision_html = f"""
-            <div style="background:#ffffff;border:2px solid {d['confidence_color']};border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:16px">
-                    <div>
-                        <div style="font-size:0.68rem;text-transform:uppercase;color:#6b7280;font-weight:700;letter-spacing:0.12em;margin-bottom:10px">🎯 המלצת המערכת</div>
-                        <div style="font-size:2.4rem;font-weight:800;color:#0f172a;line-height:1">{winner_flag} {d['winner_name']}</div>
-                        <div style="font-size:1rem;color:{d['confidence_color']};font-weight:600;margin-top:8px">{d['confidence_emoji']} ביטחון {d['confidence']} &nbsp;·&nbsp; {d['winner_prob']:.0f}% הסתברות</div>
-                    </div>
-                    <div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 28px">
+            <div style="background:#ffffff;border:2px solid {d['confidence_color']};border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:0 4px 24px rgba(0,0,0,0.08);direction:rtl">
+
+                <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+                <tr>
+                <td style="width:70%;vertical-align:top;padding-left:20px">
+                    <div style="font-size:0.68rem;text-transform:uppercase;color:#6b7280;font-weight:700;letter-spacing:0.12em;margin-bottom:10px">🎯 המלצת המערכת</div>
+                    <div style="font-size:2.4rem;font-weight:800;color:#0f172a;line-height:1">{winner_flag} {d['winner_name']}</div>
+                    <div style="font-size:1rem;color:{d['confidence_color']};font-weight:600;margin-top:8px">{d['confidence_emoji']} ביטחון {d['confidence']} &nbsp;·&nbsp; {d['winner_prob']:.0f}% הסתברות</div>
+                </td>
+                <td style="width:30%;vertical-align:top">
+                    <div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px">
                         <div style="font-size:0.68rem;color:#6b7280;margin-bottom:8px;text-transform:uppercase">ציון כולל</div>
-                        <div style="font-size:2.2rem;font-weight:800;color:#1d4ed8">{score_home['total']:.0f}</div>
+                        <div style="font-size:2rem;font-weight:800;color:#1d4ed8">{score_home['total']:.0f}</div>
                         <div style="font-size:0.78rem;color:#6b7280;margin-bottom:4px">{home['name']}</div>
                         <div style="font-size:1rem;color:#94a3b8">vs</div>
-                        <div style="font-size:2.2rem;font-weight:800;color:#7c3aed">{score_away['total']:.0f}</div>
+                        <div style="font-size:2rem;font-weight:800;color:#7c3aed">{score_away['total']:.0f}</div>
                         <div style="font-size:0.78rem;color:#6b7280">{away['name']}</div>
                     </div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                    <div>
-                        <div style="font-size:0.68rem;font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:8px">נימוקים לבחירה</div>
-                        {reasons_items}
-                    </div>
-                    <div>
-                        <div style="font-size:0.68rem;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:8px">סיכונים</div>
-                        {risks_items}
-                    </div>
-                </div>
+                </td>
+                </tr>
+                </table>
+
+                <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+                <tr>
+                <td style="width:50%;vertical-align:top;padding-left:16px">
+                    <div style="font-size:0.68rem;font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:8px">נימוקים לבחירה</div>
+                    {reasons_items}
+                </td>
+                <td style="width:50%;vertical-align:top">
+                    <div style="font-size:0.68rem;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:8px">סיכונים</div>
+                    {risks_items}
+                </td>
+                </tr>
+                </table>
+
                 {bet_section}
             </div>
             """
@@ -688,8 +710,10 @@ with tab_backtest:
 # TAB 5 — מילון מושגים
 # ══════════════════════════════════════════════════════
 with tab_glossary:
+    st.markdown('<div style="direction:rtl;text-align:right">', unsafe_allow_html=True)
     st.markdown("### 📖 מילון מושגים — כל מה שצריך לדעת")
     st.markdown("המערכת משתמשת במספר מושגים מתמטיים וסטטיסטיים. הנה הסבר ברור לכל אחד מהם.")
+    st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     terms = [
