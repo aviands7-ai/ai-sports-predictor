@@ -163,20 +163,22 @@ with tab_intel:
 
             # ── כותרת משחק ──────────────────────────────────────
             st.divider()
-            c1, c2, c3 = st.columns([2, 1, 2])
+            st.caption(f"🏟️ {md['venue']}, {md['city']}  ·  {md['match_time']} UTC  ·  {md['match_date']}")
+
+            c1, c2, c3 = st.columns([5, 2, 5])
             with c1:
                 if flag_h:
-                    st.image(flag_h, width=80)
-                st.markdown(f"### {home['name']}")
-                st.caption(f"Elo {elo_h:.0f}")
+                    st.image(flag_h, width=72)
+                st.markdown(f"## {home['name']}")
+                st.metric("Elo", f"{elo_h:.0f}", delta=f"ציון {score_h['total']:.0f}/100")
             with c2:
-                st.markdown("<br><br>", unsafe_allow_html=True)
-                st.markdown("### VS", help=f"🏟️ {md['venue']}, {md['city']} · {md['match_time']} UTC")
+                st.markdown("<br><br><br>", unsafe_allow_html=True)
+                st.markdown("## VS")
             with c3:
                 if flag_a:
-                    st.image(flag_a, width=80)
-                st.markdown(f"### {away['name']}")
-                st.caption(f"Elo {elo_a:.0f}")
+                    st.image(flag_a, width=72)
+                st.markdown(f"## {away['name']}")
+                st.metric("Elo", f"{elo_a:.0f}", delta=f"ציון {score_a['total']:.0f}/100")
 
             st.divider()
 
@@ -192,23 +194,26 @@ with tab_intel:
             else:
                 st.error(winner_text)
 
-            if d.get("reasons"):
-                with st.expander("✅ נימוקים לבחירה"):
+            # נימוקים וסיכונים בשתי עמודות
+            cr, cs = st.columns(2)
+            with cr:
+                if d.get("reasons"):
+                    st.markdown("**✅ נימוקים לבחירה**")
                     for r in d["reasons"]:
                         st.write(f"• {r}")
-
-            if d.get("risks"):
-                with st.expander("⚠️ סיכונים"):
+            with cs:
+                if d.get("risks"):
+                    st.markdown("**⚠️ סיכונים**")
                     for r in d["risks"]:
                         st.write(f"• {r}")
 
             bet = d.get("bet_recommendation")
             if bet:
-                st.success(f"💰 **Value Bet:** {bet['kelly']}% מהתקציב על **{bet['outcome']}** · יחס {bet['odds']} · EV +{bet['ev']}%")
+                st.success(f"💰 **Value Bet מזוהה:** {bet['kelly']}% מהתקציב על **{bet['outcome']}** · יחס {bet['odds']} · EV +{bet['ev']}% · יתרון {bet['edge']}% על יחס הוגן")
             elif live_od:
-                st.info("❌ אין Value Bet — אין יתרון מתמטי ביחסים הנוכחיים")
+                st.warning("❌ אין Value Bet — אין יתרון מתמטי ביחסים הנוכחיים")
             else:
-                st.info("⚠️ אין odds זמינים למשחק זה")
+                st.warning("⚠️ אין odds זמינים למשחק זה — EV לא ניתן לחישוב")
 
             st.divider()
 
@@ -217,34 +222,35 @@ with tab_intel:
 
             def team_panel(col, name, elo, score, form, factor):
                 with col:
-                    st.markdown(f"#### {name}")
+                    st.markdown(f"#### 📋 {name}")
 
-                    # ציונים
+                    # ציון כולל בולט
+                    st.metric("ציון כולל", f"{score['total']:.0f} / 100",
+                              help="משוקלל מעוצמה (35%) + טופס (25%) + התקפה (20%) + הגנה (20%)")
+
+                    # מדדים בשורה
                     m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("ציון כולל", f"{score['total']:.0f}/100")
-                    m2.metric("עוצמה", f"{score['elo']:.0f}")
-                    m3.metric("טופס", f"{score['form']:.0f}")
-                    m4.metric("הגנה", f"{score['defense']:.0f}")
+                    m1.metric("⚔️ התקפה", f"{score['attack']:.0f}")
+                    m2.metric("🛡️ הגנה", f"{score['defense']:.0f}")
+                    m3.metric("📈 טופס", f"{score['form']:.0f}")
+                    m4.metric("🔢 Elo", f"{elo:.0f}")
 
-                    # 5 משחקים אחרונים
-                    st.markdown("**5 משחקים אחרונים:**")
+                    # 5 משחקים אחרונים — שורה אחת ברורה
                     results = form.get("results", [])
-                    result_map = {"W": "🟢 ניצחון", "D": "🟡 תיקו", "L": "🔴 הפסד"}
-                    cols_r = st.columns(len(results)) if results else []
-                    for i, r in enumerate(results):
-                        cols_r[i].markdown(f"**{result_map.get(r, '?').split()[0]}**")
-                        cols_r[i].caption(result_map.get(r,'?').split()[-1])
+                    icons = {"W": "🟢", "D": "🟡", "L": "🔴"}
+                    labels = {"W": "נ", "D": "ת", "L": "ה"}
+                    result_str = "  ".join([f"{icons.get(r,'?')} {labels.get(r,'?')}" for r in results])
+                    st.markdown(f"**5 אחרונים:** {result_str}")
 
-                    # סטטיסטיקות
+                    # סטטיסטיקות + מגמה
                     s1, s2, s3 = st.columns(3)
-                    s1.metric("שערים/מ׳", f"{form.get('avg_scored',0):.1f}")
-                    s2.metric("קבלה/מ׳", f"{form.get('avg_conceded',0):.1f}")
-                    s3.metric("שערים נקיים", form.get('clean_sheets',0))
+                    s1.metric("⚽ שערים/מ׳", f"{form.get('avg_scored',0):.1f}")
+                    s2.metric("🥅 קבלה/מ׳", f"{form.get('avg_conceded',0):.1f}")
+                    s3.metric("🔒 נקיים", form.get('clean_sheets', 0))
 
-                    trend_map = {"rising": "📈 עלייה", "falling": "📉 ירידה", "stable": "➡️ יציב", "unknown": "❓"}
-                    st.caption(f"מגמה: {trend_map.get(form.get('trend','unknown'), '?')}")
-                    if form.get("win_streak", 0) >= 2:
-                        st.caption(f"🔥 {form['win_streak']} ניצחונות ברצף")
+                    trend_map = {"rising": "📈 עלייה", "falling": "📉 ירידה", "stable": "➡️ יציב", "unknown": "—"}
+                    st.caption(f"מגמה: {trend_map.get(form.get('trend','unknown'), '—')}"
+                               + (f"  ·  🔥 {form['win_streak']} ניצחונות ברצף" if form.get("win_streak",0) >= 2 else ""))
 
             team_panel(col_h, home["name"], elo_h, score_h, form_h, form_h_f)
             team_panel(col_a, away["name"], elo_a, score_a, form_a, form_a_f)
@@ -257,30 +263,37 @@ with tab_intel:
             with col_probs:
                 st.markdown("#### 📊 הסתברויות")
                 rows = []
-                for key_o, label_o in [("home", f"{home['name']} מנצחת"), ("draw", "🤝 תיקו"), ("away", f"{away['name']} מנצחת")]:
+                for key_o, label_o in [
+                    ("home", f"🏠 {home['name']} מנצחת"),
+                    ("draw",  "🤝 תיקו"),
+                    ("away", f"✈️ {away['name']} מנצחת")
+                ]:
                     la = analysis[key_o]
                     row = {
-                        "תוצאה": label_o,
-                        "סיכוי": f"{la['our_prob']}%",
-                        "יחס הוגן": la["fair_odds"],
+                        "תוצאה":     label_o,
+                        "סיכוי %":   f"{la['our_prob']}%",
+                        "יחס הוגן":  la["fair_odds"],
                     }
                     if live_od:
-                        row["Odds"] = live_od.get(key_o, "-")
                         ev = la["ev"]
-                        row["EV"] = f"+{ev:.1%}" if ev > 0 else f"{ev:.1%}"
-                        row["✓"] = "✅" if la["is_value"] else "❌"
+                        row["Odds"]   = live_od.get(key_o, "—")
+                        row["EV"]     = f"+{ev:.1%}" if ev > 0 else f"{ev:.1%}"
+                        row["Value?"] = "✅" if la["is_value"] else "❌"
                     rows.append(row)
+
                 st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
                 if live_od:
                     st.caption(f"Odds מ-{md.get('live_bm','?')}")
+                else:
+                    st.caption("⚠️ אין odds זמינים — EV לא מחושב")
 
             with col_scores:
                 st.markdown("#### ⚽ תוצאות סבירות")
+                scores_data = []
                 for score_str, pct in analysis["top_scores"]:
-                    c1, c2 = st.columns([1, 3])
-                    c1.markdown(f"**{score_str}**")
-                    c2.progress(int(pct * 4))
-                    c2.caption(f"{pct}%")
+                    scores_data.append({"תוצאה": score_str, "סיכוי": f"{pct}%"})
+                st.dataframe(pd.DataFrame(scores_data), hide_index=True, use_container_width=True)
 
             st.divider()
 
