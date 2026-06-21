@@ -29,12 +29,14 @@ div[data-testid="metric-container"] { background: #f8fafc; border: 1px solid #e2
 """, unsafe_allow_html=True)
 
 from api_client import get_all_fixtures, get_injuries, get_head_to_head, get_team_last_matches
-from engine import full_match_analysis, calculate_form_factor
+from engine import full_match_analysis, calculate_form_factor, apply_lineup_factor
 from db import get_all_teams, get_team_elo
 from backtest import run_full_backtest
 from odds_api import get_best_odds
 from export_report import build_excel_report
 from decision_engine import get_flag_url, analyze_recent_form, calculate_team_score, generate_decision
+from lineup_analyzer import get_lineup_summary, calculate_lineup_factor
+from closing_line import get_clv_report, save_opening_odds
 
 # ─── כותרת ─────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -194,7 +196,28 @@ with tab_intel:
                     raw = {k: live_raw.get(k) for k in ["home","draw","away"]}
                     if all(v and 1.01 <= v <= 25 for v in raw.values()):
                         live_od = raw
-                analysis = full_match_analysis(elo_h, elo_a, live_od or {}, home_advantage=0.0, form_home=form_h_factor, form_away=form_a_factor)
+
+                # ── Lineup Factor ──
+                lineup_data = get_lineup_summary(fixture_id, home["id"], away["id"])
+                lineup_f_h = lineup_data["factor_home"]
+                lineup_f_a = lineup_data["factor_away"]
+
+                analysis = full_match_analysis(
+                    elo_h, elo_a, live_od or {},
+                    home_advantage=0.0,
+                    form_home=form_h_factor,
+                    form_away=form_a_factor,
+                    lineup_home=lineup_f_h,
+                    lineup_away=lineup_f_a,
+                )
+
+                # שמור opening odds ל-CLV
+                if live_od:
+                    save_opening_odds(fixture_id, live_od, {
+                        "home": analysis["home"]["our_prob_raw"],
+                        "draw": analysis["draw"]["our_prob_raw"],
+                        "away": analysis["away"]["our_prob_raw"],
+                    })
                 decision = generate_decision(
                     home["name"], away["name"], score_h, score_a, form_h, form_a,
                     {"home": analysis["home"]["our_prob"], "draw": analysis["draw"]["our_prob"], "away": analysis["away"]["our_prob"]},
@@ -212,6 +235,9 @@ with tab_intel:
                 "analysis": analysis, "injuries": injuries, "h2h": h2h,
                 "live_od": live_od, "decision": decision,
                 "live_bm": live_raw.get("home_book","?") if live_raw else "?",
+                "lineup_data": lineup_data,
+                "lineup_f_h": lineup_f_h,
+                "lineup_f_a": lineup_f_a,
             }
 
         # ─── תצוגת תוצאות ───────────────────────────────────────
@@ -234,6 +260,9 @@ with tab_intel:
             h2h      = md["h2h"]
             live_od  = md["live_od"]
             decision = md["decision"]
+            lineup_data = md.get("lineup_data", {})
+            lineup_f_h  = md.get("lineup_f_h", 1.0)
+            lineup_f_a  = md.get("lineup_f_a", 1.0)
             d        = decision
             flag_h   = get_flag_url(home["name"])
             flag_a   = get_flag_url(away["name"])
@@ -361,7 +390,34 @@ with tab_intel:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # ── 4. הסתברויות + תוצאות ───────────────────────────
+            # ── Lineup Factor — שחקנים חסרים ─────────────────────
+            missing_h = lineup_data.get("missing_home", [])
+            missing_a = lineup_data.get("missing_away", [])
+
+            if missing_h or missing_a or lineup_f_h < 1.0 or lineup_f_a < 1.0:
+                lu_h, lu_a = st.columns(2)
+                with lu_h:
+                    impact_h = round((1.0 - lineup_f_h) * 100)
+                    if missing_h:
+                        st.markdown(f"**🚨 שחקנים חסרים — {home['name']}** (השפעה: -{impact_h}% על xG)")
+                        for p in missing_h:
+                            impact_str = f" (כוכב — השפעה גבוהה)" if p.get("impact",0) >= 0.20 else ""
+                            st.markdown(f"• 🤕 {p['name']}{impact_str}")
+                    else:
+                        st.markdown(f"**✅ {home['name']}** — סגל מלא")
+
+                with lu_a:
+                    impact_a = round((1.0 - lineup_f_a) * 100)
+                    if missing_a:
+                        st.markdown(f"**🚨 שחקנים חסרים — {away['name']}** (השפעה: -{impact_a}% על xG)")
+                        for p in missing_a:
+                            impact_str = f" (כוכב — השפעה גבוהה)" if p.get("impact",0) >= 0.20 else ""
+                            st.markdown(f"• 🤕 {p['name']}{impact_str}")
+                    else:
+                        st.markdown(f"**✅ {away['name']}** — סגל מלא")
+
+                if lineup_data.get("has_confirmed_lineup"):
+                    st.caption("✅ הרכב מאושר זמין")
             col_probs, col_scores = st.columns([3, 2])
 
             with col_probs:
@@ -612,6 +668,20 @@ with tab_backtest:
                 st.warning("🔶 יתרון קטן — צריך יותר נתונים.")
             else:
                 st.error("⚠️ ROI שלילי. אל תשים כסף.")
+
+    st.divider()
+    st.markdown("### 📈 Closing Line Value (CLV)")
+    st.caption("האם המודל מנצח את השוק? CLV חיובי = המודל זיהה ערך לפני שהשוק הגיע לאותה מסקנה.")
+    clv = get_clv_report()
+    if "error" in clv:
+        st.info(f"⏳ {clv['error']}")
+    else:
+        c1, c2, c3 = st.columns(3)
+        clv_color = "normal" if clv["avg_clv"] > 0 else "inverse"
+        c1.metric("ממוצע CLV", f"{clv['avg_clv']:.1%}", delta=clv["interpretation"].split()[0])
+        c2.metric("ניצחנו את השוק", f"{clv['beat_market_pct']}%", delta=f"{clv['positive_clv']}/{clv['n_predictions']}")
+        c3.metric("תחזיות עם CLV", clv["n_predictions"])
+        st.info(clv["interpretation"])
 
 
 # ══════════════════════════════════════════════════════

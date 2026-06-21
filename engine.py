@@ -181,6 +181,7 @@ def update_elo(elo_home: float, elo_away: float,
                home_advantage: float = 0.0) -> tuple[float, float]:
     """
     מעדכן דירוגי Elo אחרי משחק שהסתיים.
+    כולל שקלול הפרש שערים — ניצחון 3-0 שווה יותר מ-1-0.
     home_advantage=0 במגרש נייטרלי (מונדיאל).
     """
     adj_home = elo_home + home_advantage
@@ -188,16 +189,52 @@ def update_elo(elo_home: float, elo_away: float,
 
     if status == "PEN":
         actual_home, actual_away = 0.5, 0.5
+        goal_diff_factor = 1.0  # פנדלים = ניצחון שקול
     elif home_goals > away_goals:
         actual_home, actual_away = 1.0, 0.0
+        goal_diff_factor = _goal_diff_multiplier(home_goals - away_goals)
     elif home_goals < away_goals:
         actual_home, actual_away = 0.0, 1.0
+        goal_diff_factor = _goal_diff_multiplier(away_goals - home_goals)
     else:
         actual_home, actual_away = 0.5, 0.5
+        goal_diff_factor = 1.0
 
-    new_home = round(elo_home + k * (actual_home - exp_home), 1)
-    new_away = round(elo_away + k * (1.0 - actual_home - (1.0 - exp_home)), 1)
+    # K מוכפל בפקטור הפרש השערים
+    k_adjusted = k * goal_diff_factor
+
+    new_home = round(elo_home + k_adjusted * (actual_home - exp_home), 1)
+    new_away = round(elo_away + k_adjusted * (1.0 - actual_home - (1.0 - exp_home)), 1)
     return new_home, new_away
+
+
+def _goal_diff_multiplier(diff: int) -> float:
+    """
+    מכפיל K לפי הפרש שערים.
+    1 שער = 1.0, 2 שערים = 1.5, 3+ שערים = 1.75
+    נוסחת FIFA Elo הקלאסית.
+    """
+    if diff == 1:
+        return 1.0
+    elif diff == 2:
+        return 1.5
+    else:
+        return 1.75
+
+
+def apply_lineup_factor(xg_home: float, xg_away: float,
+                        lineup_factor_home: float = 1.0,
+                        lineup_factor_away: float = 1.0) -> tuple[float, float]:
+    """
+    מתאים xG לפי עוצמת ההרכב.
+    lineup_factor = 1.0 → הרכב מלא
+    lineup_factor = 0.85 → כוכב אחד חסר
+    lineup_factor = 0.70 → מספר כוכבים חסרים
+    """
+    return (
+        round(max(0.1, xg_home * lineup_factor_home), 3),
+        round(max(0.1, xg_away * lineup_factor_away), 3),
+    )
 
 
 # ─── Poisson ───────────────────────────────────────────────────────────────────
@@ -206,18 +243,21 @@ def expected_goals(elo_home: float, elo_away: float,
                    home_advantage: float = 0.0,
                    league_avg_goals: float = 1.3,
                    form_home: float = 1.0,
-                   form_away: float = 1.0) -> tuple[float, float]:
+                   form_away: float = 1.0,
+                   lineup_home: float = 1.0,
+                   lineup_away: float = 1.0) -> tuple[float, float]:
     """
     מחשב שערים צפויים לכל קבוצה.
-    כולל Form Factor: קבוצה בטופס טוב מצפה לייצר יותר שערים.
+    כולל Form Factor + Lineup Factor.
+    lineup_home/away: 0.7-1.0 לפי עוצמת ההרכב
     """
     elo_diff = (elo_home + home_advantage) - elo_away
     base_xg_home = max(0.1, league_avg_goals + (elo_diff / 250))
     base_xg_away = max(0.1, league_avg_goals - (elo_diff / 250))
 
-    # Form Factor משפיע על ה-xG
-    xg_home = round(max(0.1, base_xg_home * form_home), 3)
-    xg_away = round(max(0.1, base_xg_away * form_away), 3)
+    # Form Factor + Lineup Factor משפיעים על ה-xG
+    xg_home = round(max(0.1, base_xg_home * form_home * lineup_home), 3)
+    xg_away = round(max(0.1, base_xg_away * form_away * lineup_away), 3)
     return xg_home, xg_away
 
 
@@ -225,6 +265,8 @@ def match_probabilities(elo_home: float, elo_away: float,
                         home_advantage: float = 0.0,
                         form_home: float = 1.0,
                         form_away: float = 1.0,
+                        lineup_home: float = 1.0,
+                        lineup_away: float = 1.0,
                         max_goals: int = 6) -> dict:
     """
     מחשב הסתברויות + score matrix לפי Poisson.
@@ -232,7 +274,8 @@ def match_probabilities(elo_home: float, elo_away: float,
     """
     xg_h, xg_a = expected_goals(
         elo_home, elo_away, home_advantage,
-        form_home=form_home, form_away=form_away
+        form_home=form_home, form_away=form_away,
+        lineup_home=lineup_home, lineup_away=lineup_away,
     )
 
     home_pmf = [poisson.pmf(i, xg_h) for i in range(max_goals + 1)]
@@ -348,13 +391,16 @@ def full_match_analysis(elo_home: float, elo_away: float,
                         home_advantage: float = 0.0,
                         form_home: float = 1.0,
                         form_away: float = 1.0,
+                        lineup_home: float = 1.0,
+                        lineup_away: float = 1.0,
                         odds_updated_at: str | None = None) -> dict:
     """
-    ניתוח מלא: הסתברויות + Form + EV + Kelly + Odds Freshness.
+    ניתוח מלא: הסתברויות + Form + Lineup + EV + Kelly + Odds Freshness.
     """
     probs = match_probabilities(
         elo_home, elo_away, home_advantage,
-        form_home=form_home, form_away=form_away
+        form_home=form_home, form_away=form_away,
+        lineup_home=lineup_home, lineup_away=lineup_away,
     )
 
     results = {}
@@ -382,6 +428,8 @@ def full_match_analysis(elo_home: float, elo_away: float,
     results["top_scores"] = most_likely_scores(probs["score_matrix"])
     results["form_home"] = round(form_home, 3)
     results["form_away"] = round(form_away, 3)
+    results["lineup_home"] = round(lineup_home, 3)
+    results["lineup_away"] = round(lineup_away, 3)
     results["odds_freshness"] = odds_freshness(odds_updated_at)
 
     return results
