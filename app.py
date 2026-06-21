@@ -263,6 +263,7 @@ from engine import full_match_analysis, match_probabilities, calculate_form_fact
 from db import get_all_teams, get_team_elo
 from backtest import run_full_backtest
 from odds_api import get_live_odds, get_best_odds
+from export_report import build_excel_report
 
 
 # ─── Header ────────────────────────────────────────────────────────────────────
@@ -429,6 +430,12 @@ with tab_intel:
                         live_odds_data = get_live_odds(home["name"], away["name"])
 
                 if live_odds_data:
+                    st.session_state["last_live_odds"] = {
+                        "home": live_odds_data.get("home"),
+                        "draw": live_odds_data.get("draw"),
+                        "away": live_odds_data.get("away"),
+                        "bookmaker": live_odds_data.get("bookmaker", live_odds_data.get("home_book", "?")),
+                    }
                     # הצגת טבלת odds מכל הבוקמייקרים
                     all_books = live_odds_data.get("all_books", [])
                     if all_books:
@@ -545,6 +552,66 @@ with tab_intel:
                 for i, (score, pct) in enumerate(analysis["top_scores"]):
                     with score_cols[i]:
                         st.markdown(f'<div class="score-item"><div class="score-result">{score}</div><div class="score-prob">{pct}%</div></div>', unsafe_allow_html=True)
+
+                # ── כפתור ייצוא Excel ──
+                st.markdown("---")
+                if st.button("📥 ייצא דוח Excel מלא", key="export_btn"):
+                    with st.spinner("בונה דוח..."):
+                        live_od = st.session_state.get("last_live_odds")
+                        export_match = {
+                            "home_name":  home["name"],
+                            "away_name":  away["name"],
+                            "match_date": md.get("match_date", ""),
+                            "venue":      md.get("venue", ""),
+                            "city":       md.get("city", ""),
+                            "elo_home":   elo_home,
+                            "elo_away":   elo_away,
+                            "form_home":  form_home,
+                            "form_away":  form_away,
+                            "xg_home":    analysis["xg_home"],
+                            "xg_away":    analysis["xg_away"],
+                            "probs": {
+                                "home": analysis["home"]["our_prob"],
+                                "draw": analysis["draw"]["our_prob"],
+                                "away": analysis["away"]["our_prob"],
+                            },
+                            "fair_odds": {
+                                "home": analysis["home"]["fair_odds"],
+                                "draw": analysis["draw"]["fair_odds"],
+                                "away": analysis["away"]["fair_odds"],
+                            },
+                            "live_odds": live_od,
+                            "ev": {
+                                "home": analysis["home"]["ev"],
+                                "draw": analysis["draw"]["ev"],
+                                "away": analysis["away"]["ev"],
+                            },
+                            "kelly": {
+                                "home": analysis["home"]["kelly_pct"],
+                                "draw": analysis["draw"]["kelly_pct"],
+                                "away": analysis["away"]["kelly_pct"],
+                            },
+                            "top_scores": analysis["top_scores"],
+                            "injuries_home": [i["player"]["name"] for i in injuries if i["team"]["id"] == home["id"]],
+                            "injuries_away": [i["player"]["name"] for i in injuries if i["team"]["id"] == away["id"]],
+                            "h2h": [{"date": g["fixture"]["date"][:10], "home": g["teams"]["home"]["name"], "result": f"{g['goals']['home'] or 0}-{g['goals']['away'] or 0}", "away": g["teams"]["away"]["name"]} for g in h2h[-5:]] if h2h else [],
+                        }
+
+                        # Value Bets מ-session
+                        vb_data = st.session_state.get("last_value_bets", [])
+
+                        # Elo Rankings
+                        elo_data = get_all_teams()
+
+                        excel_bytes = build_excel_report(export_match, vb_data, elo_data)
+
+                    st.download_button(
+                        label="⬇️ הורד Excel",
+                        data=excel_bytes,
+                        file_name=f"WC2026_{home['name']}_vs_{away['name']}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_excel"
+                    )
 
             # ─── Intel Column ───────────────────────────────────────
             with col_intel:
