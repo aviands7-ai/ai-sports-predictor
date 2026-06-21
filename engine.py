@@ -261,16 +261,55 @@ def expected_goals(elo_home: float, elo_away: float,
     return xg_home, xg_away
 
 
+def _dixon_coles_tau(home_goals: int, away_goals: int,
+                     xg_home: float, xg_away: float,
+                     rho: float) -> float:
+    """
+    פרמטר תלות Dixon-Coles — τ(i,j,λ,μ,ρ).
+    מתקן את ההסתברויות לתוצאות דל-שערים.
+
+    rho=-0.13 (ברירת מחדל):
+    - מנפח: P(0-0) — יותר מ-Poisson קלאסי  ✅
+    - מקטין: P(1-0), P(0-1) — מעט פחות    ✅
+    - מנפח: P(1-1)                          ✅
+
+    זהו הערך המכויל הידוע מספרות המחקר על ליגות אירופאיות.
+    Dixon & Coles (1997): Applied Statistics, 46(2), 265-280.
+    """
+    i, j = home_goals, away_goals
+    lam, mu = xg_home, xg_away
+
+    if i == 0 and j == 0:
+        return 1 - lam * mu * rho
+    elif i == 1 and j == 0:
+        return 1 + mu * rho
+    elif i == 0 and j == 1:
+        return 1 + lam * rho
+    elif i == 1 and j == 1:
+        return 1 - rho
+    else:
+        return 1.0
+
+
 def match_probabilities(elo_home: float, elo_away: float,
                         home_advantage: float = 0.0,
                         form_home: float = 1.0,
                         form_away: float = 1.0,
                         lineup_home: float = 1.0,
                         lineup_away: float = 1.0,
-                        max_goals: int = 6) -> dict:
+                        max_goals: int = 6,
+                        rho: float = -0.13) -> dict:
     """
-    מחשב הסתברויות + score matrix לפי Poisson.
-    כולל Form Factor.
+    מחשב הסתברויות לפי Dixon-Coles Bivariate Poisson.
+
+    שיפור מהותי על פואסון קלאסי:
+    פואסון סטנדרטי מניח עצמאות בין שערי הקבוצות — שגוי בכדורגל.
+    Dixon-Coles מוסיף פרמטר ρ (rho) שמתקן תוצאות דל-שערים:
+    - מנפח: P(0-0), P(1-0), P(0-1)
+    - מקטין: P(1-1)
+
+    rho = -0.13 הוא ערך מכויל על נתוני ליגות אירופאיות (ממוצע מחקרי).
+    ניתן להעביר rho=0 לחזור לפואסון קלאסי.
     """
     xg_h, xg_a = expected_goals(
         elo_home, elo_away, home_advantage,
@@ -286,7 +325,10 @@ def match_probabilities(elo_home: float, elo_away: float,
 
     for i in range(max_goals + 1):
         for j in range(max_goals + 1):
-            p = home_pmf[i] * away_pmf[j]
+            # Dixon-Coles correction — רק לתוצאות דל-שערים
+            tau = _dixon_coles_tau(i, j, xg_h, xg_a, rho)
+            p = home_pmf[i] * away_pmf[j] * tau
+            p = max(0.0, p)  # מניעת הסתברות שלילית
             score_matrix[f"{i}-{j}"] = p
             if i > j:
                 home_win += p
@@ -295,6 +337,7 @@ def match_probabilities(elo_home: float, elo_away: float,
             else:
                 away_win += p
 
+    # נרמול (Dixon-Coles לא מבטיח סכום=1)
     total = home_win + draw + away_win
     return {
         "home": round(home_win / total, 4),
@@ -302,7 +345,8 @@ def match_probabilities(elo_home: float, elo_away: float,
         "away": round(away_win / total, 4),
         "xg_home": xg_h,
         "xg_away": xg_a,
-        "score_matrix": score_matrix,
+        "score_matrix": {k: v/total for k, v in score_matrix.items()},
+        "rho": rho,
     }
 
 
@@ -394,17 +438,17 @@ def full_match_analysis(elo_home: float, elo_away: float,
                         lineup_home: float = 1.0,
                         lineup_away: float = 1.0,
                         pure_probs: dict | None = None,
-                        odds_updated_at: str | None = None) -> dict:
+                        odds_updated_at: str | None = None,
+                        rho: float = -0.13) -> dict:
     """
     ניתוח מלא: הסתברויות + Form + Lineup + EV + Kelly + Odds Freshness.
-
-    pure_probs: הסתברויות מהמודל הטהור (ללא שוק) — לחישוב EV נכון.
-    אם לא מועבר, משתמש בהסתברויות של Elo+Poisson.
+    rho: פרמטר Dixon-Coles — מכויל אוטומטית מ-main.py.
     """
     probs = match_probabilities(
         elo_home, elo_away, home_advantage,
         form_home=form_home, form_away=form_away,
         lineup_home=lineup_home, lineup_away=lineup_away,
+        rho=rho,
     )
 
     # הסתברויות לחישוב EV — תמיד מהמודל הטהור (ללא שוק)

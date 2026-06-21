@@ -37,6 +37,7 @@ from export_report import build_excel_report
 from decision_engine import get_flag_url, analyze_recent_form, calculate_team_score, generate_decision
 from lineup_analyzer import get_lineup_summary, calculate_lineup_factor
 from closing_line import get_clv_report, save_opening_odds
+from rho_calibrator import get_current_rho
 from fatigue_analyzer import get_fatigue_summary
 from ensemble import ensemble_probabilities
 from calibration import run_calibration_check
@@ -214,6 +215,9 @@ with tab_intel:
                     if all(v and 1.01 <= v <= 25 for v in raw.values()):
                         live_od = raw
 
+                # ── rho מכויל אוטומטית ──
+                current_rho = get_current_rho()
+
                 # ── Lineup Factor ──
                 lineup_data = get_lineup_summary(fixture_id, home["id"], away["id"])
                 lineup_f_h = lineup_data["factor_home"]
@@ -241,6 +245,7 @@ with tab_intel:
                     lineup_home=lineup_f_h,
                     lineup_away=lineup_f_a,
                     pure_probs=ensemble_data.get("pure"),  # EV מבוסס מודל טהור
+                    rho=current_rho,
                 )
 
                 # שמור opening odds ל-CLV
