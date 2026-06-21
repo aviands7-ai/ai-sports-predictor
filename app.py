@@ -329,27 +329,41 @@ with tab_intel:
             with st.spinner("שואב נתונים..."):
                 elo_home = get_team_elo(home["id"])
                 elo_away = get_team_elo(away["id"])
-
                 last_home = get_team_last_matches(home["id"], last=5)
                 last_away = get_team_last_matches(away["id"], last=5)
                 form_home = calculate_form_factor(last_home, home["id"])
                 form_away = calculate_form_factor(last_away, away["id"])
-
                 odds_data = get_odds(fixture_id)
                 odds_updated_at = odds_data.get("updated_at") if odds_data else None
-                odds_bm = odds_data.get("bookmaker", "?") if odds_data else "?"
-                odds = {k: odds_data[k] for k in ["home","draw","away"] if odds_data and k in odds_data} or {"home": 0.0, "draw": 0.0, "away": 0.0}
-
-                analysis = full_match_analysis(
-                    elo_home, elo_away, odds,
-                    home_advantage=0.0,
-                    form_home=form_home,
-                    form_away=form_away,
-                    odds_updated_at=odds_updated_at
-                )
+                odds = {k: odds_data[k] for k in ["home","draw","away"] if odds_data and k in odds_data} or {}
+                analysis = full_match_analysis(elo_home, elo_away, odds, home_advantage=0.0, form_home=form_home, form_away=form_away, odds_updated_at=odds_updated_at)
                 injuries = get_injuries(fixture_id)
                 h2h = get_head_to_head(home["id"], away["id"], last=10)
-                freshness = analysis.get("odds_freshness", {})
+
+            # שמור ב-session_state כדי שכפתורים פנימיים יעבדו
+            st.session_state["match_data"] = {
+                "fixture_id": fixture_id, "home": home, "away": away,
+                "venue": venue, "city": city, "match_time": match_time,
+                "elo_home": elo_home, "elo_away": elo_away,
+                "form_home": form_home, "form_away": form_away,
+                "analysis": analysis, "injuries": injuries, "h2h": h2h,
+            }
+
+        # הצג תוצאות אם יש נתונים ב-session_state
+        if "match_data" in st.session_state:
+            md = st.session_state["match_data"]
+            home       = md["home"]
+            away       = md["away"]
+            venue      = md["venue"]
+            city       = md["city"]
+            match_time = md["match_time"]
+            elo_home   = md["elo_home"]
+            elo_away   = md["elo_away"]
+            form_home  = md["form_home"]
+            form_away  = md["form_away"]
+            analysis   = md["analysis"]
+            injuries   = md["injuries"]
+            h2h        = md["h2h"]
 
             # ─── Match Summary Row ──────────────────────────────────
             c1, c2, c3, c4, c5, c6 = st.columns(6)
@@ -662,7 +676,7 @@ with tab_rankings:
             return "color: #6b7a99"
 
         st.dataframe(
-            df_teams.style.map(color_elo, subset=["מדד Elo"]),
+            df_teams.style.applymap(color_elo, subset=["מדד Elo"]),
             use_container_width=True,
             height=600
         )
