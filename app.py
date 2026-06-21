@@ -598,3 +598,46 @@ with tab_glossary:
                     st.divider()
                     st.write(detail)
                     st.info(f"📌 דוגמה: {example}")
+
+    st.divider()
+    st.markdown("### ⚙️ איך המערכת מחשבת — תהליך שלב אחר שלב")
+    st.markdown("")
+
+    steps = [
+        ("1️⃣", "שלב הנתונים", "#e0f2fe", "#0369a1",
+         "המערכת שואבת מה-API את נתוני הקבוצות, ה-Elo הנוכחי, ו-5 המשחקים האחרונים של כל קבוצה.",
+         "Japan: Elo=1534, 5 משחקים: W W D W W"),
+
+        ("2️⃣", "חישוב Form Factor", "#fef3c7", "#d97706",
+         "כל משחק מוערך (נ=1, ת=0.5, ה=0). המשחק האחרון שווה 30%, הקודם 25%, 20%, 15%, 10%. הממוצע המשוקלל הופך למכפיל xG.",
+         "Japan: 4W+1D → Form = 1.14x (המודל יגדיל את שעריה ב-14%)"),
+
+        ("3️⃣", "חישוב xG (שערים צפויים)", "#f0fdf4", "#16a34a",
+         "הפרש ה-Elo קובע את בסיס השערים הצפויים. Form Factor מגדיל/מקטין אותו. נוסחה: xG = 1.3 + (הפרש_Elo / 250) × Form.",
+         "Japan (Elo 1534) vs Tunisia (Elo 1449): xG_יפן = 1.3 + (85/250) × 1.14 = 1.69"),
+
+        ("4️⃣", "התפלגות פואסון", "#fdf4ff", "#9333ea",
+         "עבור כל xG, מחשבים הסתברות לכל מספר שערים (0,1,2,3...). כופלים את הסתברויות שתי הקבוצות כדי לקבל הסתברות לכל תוצאה אפשרית.",
+         "P(יפן 2-0) = P(יפן_קולעת_2) × P(תוניסיה_קולעת_0) = 28% × 39% = 10.9%"),
+
+        ("5️⃣", "הסתברויות סופיות", "#fff7ed", "#ea580c",
+         "סוכמים כל התוצאות: P(ניצחון_בית) = סכום כל P(i-j) כאשר i>j. P(תיקו) = סכום P(i-i). P(ניצחון_חוץ) = היתרה.",
+         "Japan: 59%, תיקו: 22.4%, Tunisia: 18.6%"),
+
+        ("6️⃣", "השוואה ל-Odds", "#f0fdf4", "#16a34a",
+         "משווים את ההסתברות שלנו ל-Odds של האתר. אם ההסתברות שלנו גדולה יותר מהמשתמעת מה-Odds — זה Value Bet. EV = (הסתברות × Odds) - 1.",
+         "אנחנו: Japan 59%. האתר: Odds 1.85 (= 54% משתמע). EV = (0.59×1.85)-1 = +9.2% ✅"),
+
+        ("7️⃣", "Kelly Criterion", "#eff6ff", "#1d4ed8",
+         "מחשבים כמה % מהתקציב לסכן. מחלקים ב-4 (Quarter-Kelly) לבטיחות. מוגבל ל-5% מקסימום.",
+         "Kelly מלא = 18% → Quarter-Kelly = 4.5% מהתקציב"),
+    ]
+
+    for step in steps:
+        icon, title_s, bg, color, desc, ex = step
+        st.markdown(f"""
+<div style="background:{bg};border-right:4px solid {color};border-radius:8px;padding:14px 18px;margin-bottom:10px;direction:rtl">
+  <div style="font-size:15px;font-weight:600;color:{color};margin-bottom:6px">{icon} {title_s}</div>
+  <div style="font-size:13px;color:#374151;margin-bottom:8px">{desc}</div>
+  <div style="font-size:12px;color:#6b7280;background:white;border-radius:6px;padding:8px 12px">📌 {ex}</div>
+</div>""", unsafe_allow_html=True)

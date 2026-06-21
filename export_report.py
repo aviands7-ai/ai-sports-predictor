@@ -1,289 +1,234 @@
 """
-export_report.py — ייצוא דוח Excel מקצועי
-3 גיליונות: ניתוח משחק + Value Bets + Elo Rankings
+export_report.py — ייצוא דוח Excel מקצועי v2
+עיצוב נקי, קריא, מאורגן
 """
 
 import io
 from datetime import datetime
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.styles import (
-    Font, PatternFill, Alignment, Border, Side, numbers
-)
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 
-# ─── צבעים ─────────────────────────────────────────────────────────────────────
-C_HEADER_BG  = "1E3A6E"   # כחול כהה
-C_HEADER_FG  = "FFFFFF"   # לבן
-C_VALUE_BG   = "0D4A2E"   # ירוק כהה — Value Bet
-C_VALUE_FG   = "10B981"   # ירוק בהיר
-C_NO_VALUE   = "3B1C1C"   # אדום כהה
-C_SUBHEAD    = "111827"   # שורת כותרת משנה
-C_ROW_ALT    = "0F1927"   # שורות חלופיות
-C_ACCENT     = "3B82F6"   # כחול בהיר
-C_GOLD       = "F59E0B"   # זהב — מדד Elo גבוה
+def _fill(color): return PatternFill("solid", start_color=color)
+def _font(bold=False, size=11, color="000000"): return Font(name="Calibri", bold=bold, size=size, color=color)
+def _align(h="right", v="center", wrap=False): return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
+def _border_bottom(): return Border(bottom=Side(style="thin", color="E2E8F0"))
+def _border_all(): return Border(*[Side(style="thin", color="E2E8F0")]*4)
+
+def _header_row(ws, row, values, bg="1E3A8A", fg="FFFFFF", height=24):
+    ws.row_dimensions[row].height = height
+    for col, val in enumerate(values, 1):
+        c = ws.cell(row, col, val)
+        c.font = _font(bold=True, size=10, color=fg)
+        c.fill = _fill(bg)
+        c.alignment = _align("center")
+
+def _data_row(ws, row, values, bg="FFFFFF", bold=False, color="1E293B"):
+    for col, val in enumerate(values, 1):
+        c = ws.cell(row, col, val)
+        c.font = _font(bold=bold, size=10, color=color)
+        c.fill = _fill(bg)
+        c.alignment = _align("right" if col == 1 else "center")
+        c.border = _border_bottom()
+
+def _section_title(ws, row, text, colspan=6):
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=colspan)
+    c = ws.cell(row, 1, text)
+    c.font = _font(bold=True, size=11, color="1E40AF")
+    c.fill = _fill("EFF6FF")
+    c.alignment = _align("right")
+    ws.row_dimensions[row].height = 20
 
 
-def _header_style(cell, bg=C_HEADER_BG, fg=C_HEADER_FG, size=11, bold=True):
-    cell.font = Font(name="Arial", bold=bold, color=fg, size=size)
-    cell.fill = PatternFill("solid", start_color=bg)
-    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-
-def _border():
-    s = Side(style="thin", color="1F2D4A")
-    return Border(left=s, right=s, top=s, bottom=s)
-
-
-def _set_col_width(ws, col_letter, width):
-    ws.column_dimensions[col_letter].width = width
-
-
-def build_excel_report(
-    match_data: dict | None,
-    value_bets: list[dict],
-    elo_rankings: list[dict],
-) -> bytes:
-    """
-    בונה דוח Excel ומחזיר bytes להורדה.
-
-    match_data: {
-        home_name, away_name, match_date, venue, city,
-        elo_home, elo_away, form_home, form_away,
-        xg_home, xg_away,
-        probs: {home, draw, away},
-        fair_odds: {home, draw, away},
-        live_odds: {home, draw, away, bookmaker} | None,
-        ev: {home, draw, away},
-        kelly: {home, draw, away},
-        top_scores: [(score, pct), ...],
-        injuries_home: [str], injuries_away: [str],
-        h2h: [{date, home, result, away}, ...]
-    }
-    """
+def build_excel_report(match_data: dict, value_bets: list, elo_rankings: list) -> bytes:
     wb = Workbook()
 
     # ══════════════════════════════════════════════════════
-    # גיליון 1 — Match Analysis
+    # גיליון 1 — ניתוח משחק
     # ══════════════════════════════════════════════════════
     ws1 = wb.active
-    ws1.title = "Match Analysis"
+    ws1.title = "ניתוח משחק"
     ws1.sheet_view.rightToLeft = True
+    ws1.column_dimensions["A"].width = 22
+    ws1.column_dimensions["B"].width = 16
+    ws1.column_dimensions["C"].width = 16
+    ws1.column_dimensions["D"].width = 14
+    ws1.column_dimensions["E"].width = 14
+    ws1.column_dimensions["F"].width = 14
 
     if match_data:
-        row = 1
+        home = match_data.get("home_name", "")
+        away = match_data.get("away_name", "")
+        date = match_data.get("match_date", "")
+        venue = match_data.get("venue", "")
+        city  = match_data.get("city", "")
+
         # כותרת ראשית
-        ws1.merge_cells(f"A{row}:H{row}")
-        c = ws1.cell(row, 1, f"🏆 {match_data['home_name']} נגד {match_data['away_name']}")
-        _header_style(c, size=14)
-        ws1.row_dimensions[row].height = 30
+        ws1.merge_cells("A1:F1")
+        c = ws1.cell(1, 1, f"{home}  vs  {away}")
+        c.font = _font(bold=True, size=16, color="FFFFFF")
+        c.fill = _fill("1E3A8A")
+        c.alignment = _align("center")
+        ws1.row_dimensions[1].height = 36
+
+        ws1.merge_cells("A2:F2")
+        c = ws1.cell(2, 1, f"{date}  ·  {venue}, {city}")
+        c.font = _font(size=10, color="64748B")
+        c.fill = _fill("F8FAFC")
+        c.alignment = _align("center")
+        ws1.row_dimensions[2].height = 18
+
+        row = 4
+
+        # ── נתוני עוצמה ──
+        _section_title(ws1, row, "📊 נתוני עוצמה")
         row += 1
-
-        ws1.merge_cells(f"A{row}:H{row}")
-        c = ws1.cell(row, 1, f"{match_data['match_date']} · {match_data.get('venue','')} · {match_data.get('city','')}")
-        _header_style(c, bg="0D1B3E", size=10, bold=False)
-        ws1.row_dimensions[row].height = 18
-        row += 2
-
-        # ── נתוני מפתח ──
-        ws1.merge_cells(f"A{row}:H{row}")
-        c = ws1.cell(row, 1, "📊 נתוני מפתח")
-        _header_style(c, bg=C_SUBHEAD, size=11)
+        _header_row(ws1, row, ["מדד", home, away], bg="334155", height=20)
         row += 1
-
-        key_data = [
-            ["מדד Elo", match_data['home_name'], match_data['away_name']],
-            ["", match_data['elo_home'], match_data['elo_away']],
-            ["טופס (5 משחקים)", f"{match_data['form_home']:.2f}x", f"{match_data['form_away']:.2f}x"],
-            ["xG צפוי", match_data['xg_home'], match_data['xg_away']],
-        ]
-        for krow in key_data:
-            for col, val in enumerate(krow, 1):
-                c = ws1.cell(row, col, val)
-                c.font = Font(name="Arial", size=10, color="C8D0E0")
-                c.alignment = Alignment(horizontal="center")
-                c.border = _border()
+        for label, h_val, a_val in [
+            ("Elo Rating", f"{match_data.get('elo_home',0):.0f}", f"{match_data.get('elo_away',0):.0f}"),
+            ("Form Factor", f"{match_data.get('form_home',1):.2f}x", f"{match_data.get('form_away',1):.2f}x"),
+            ("xG צפוי", f"{match_data.get('xg_home',0):.2f}", f"{match_data.get('xg_away',0):.2f}"),
+        ]:
+            bg = "FFFFFF" if row % 2 == 0 else "F8FAFC"
+            _data_row(ws1, row, [label, h_val, a_val], bg=bg)
             row += 1
         row += 1
 
-        # ── הסתברויות ועמדת ערך ──
-        ws1.merge_cells(f"A{row}:H{row}")
-        c = ws1.cell(row, 1, "🎯 תחזית המודל")
-        _header_style(c, bg=C_SUBHEAD, size=11)
+        # ── הסתברויות ──
+        _section_title(ws1, row, "🎯 הסתברויות ויחסים")
+        row += 1
+        has_odds = bool(match_data.get("live_odds"))
+        headers = ["תוצאה", "סיכוי %", "יחס הוגן", "Odds", "EV", "Value?"] if has_odds else ["תוצאה", "סיכוי %", "יחס הוגן"]
+        _header_row(ws1, row, headers, bg="334155", height=20)
         row += 1
 
-        headers = ["תוצאה", "סיכוי %", "יחס הוגן", "Odds (אתר)", "EV", "Kelly %", "Value?"]
-        for col, h in enumerate(headers, 1):
-            c = ws1.cell(row, col, h)
-            _header_style(c, size=10)
-        row += 1
+        probs = match_data.get("probs", {})
+        fair  = match_data.get("fair_odds", {})
+        odds  = match_data.get("live_odds") or {}
+        evs   = match_data.get("ev", {})
 
-        outcomes = [
-            (f"{match_data['home_name']} מנצחת", "home"),
-            ("תיקו", "draw"),
-            (f"{match_data['away_name']} מנצחת", "away"),
-        ]
+        outcomes = [(f"{home} מנצחת","home"), ("תיקו","draw"), (f"{away} מנצחת","away")]
         for label, key in outcomes:
-            prob   = match_data['probs'].get(key, 0)
-            fair   = match_data['fair_odds'].get(key, 0)
-            live   = match_data.get('live_odds', {})
-            odd    = live.get(key, "-") if live else "-"
-            ev     = match_data['ev'].get(key, 0)
-            kelly  = match_data['kelly'].get(key, 0)
-            is_val = ev > 0
+            p    = probs.get(key, 0)
+            f_o  = fair.get(key, 0)
+            o    = odds.get(key, "—")
+            ev   = evs.get(key, 0)
+            is_v = has_odds and ev > 0
 
-            row_vals = [label, f"{prob:.1f}%", fair, odd,
-                        f"+{ev:.1%}" if ev > 0 else f"{ev:.1%}",
-                        f"{kelly:.1f}%" if kelly > 0 else "-",
-                        "✅ VALUE" if is_val else "❌"]
+            if has_odds:
+                ev_str = f"+{ev:.1%}" if ev > 0 else f"{ev:.1%}"
+                vals = [label, f"{p:.1f}%", f"{f_o:.3f}", o, ev_str, "✅" if is_v else "❌"]
+            else:
+                vals = [label, f"{p:.1f}%", f"{f_o:.3f}"]
 
-            bg = C_VALUE_BG if is_val else C_ROW_ALT
-            fg = C_VALUE_FG if is_val else "C8D0E0"
-
-            for col, val in enumerate(row_vals, 1):
-                c = ws1.cell(row, col, val)
-                c.font = Font(name="Arial", size=10, color=fg, bold=is_val)
-                c.fill = PatternFill("solid", start_color=bg)
-                c.alignment = Alignment(horizontal="center")
-                c.border = _border()
+            bg = "F0FDF4" if is_v else ("FFFFFF" if row % 2 == 0 else "F8FAFC")
+            ev_color = "16A34A" if is_v else "000000"
+            _data_row(ws1, row, vals, bg=bg)
+            if has_odds:
+                ws1.cell(row, 5).font = _font(bold=is_v, size=10, color=ev_color)
             row += 1
         row += 1
 
         # ── תוצאות סבירות ──
-        ws1.merge_cells(f"A{row}:H{row}")
-        c = ws1.cell(row, 1, "⚽ תוצאות סבירות ביותר")
-        _header_style(c, bg=C_SUBHEAD, size=11)
+        _section_title(ws1, row, "⚽ תוצאות סבירות")
+        row += 1
+        _header_row(ws1, row, ["תוצאה", "הסתברות %"], bg="334155", height=20)
+        row += 1
+        for score_str, pct in match_data.get("top_scores", []):
+            bg = "FFFFFF" if row % 2 == 0 else "F8FAFC"
+            _data_row(ws1, row, [score_str, f"{pct}%"], bg=bg)
+            row += 1
         row += 1
 
-        for col, (score, pct) in enumerate(match_data.get('top_scores', [])[:5], 1):
-            ws1.cell(row, col, score).font = Font(name="Arial", bold=True, color=C_ACCENT, size=12)
-            ws1.cell(row, col).alignment = Alignment(horizontal="center")
-            ws1.cell(row+1, col, f"{pct}%").font = Font(name="Arial", size=9, color="6B7A99")
-            ws1.cell(row+1, col).alignment = Alignment(horizontal="center")
-        row += 3
-
         # ── פציעות ──
-        if match_data.get('injuries_home') or match_data.get('injuries_away'):
-            ws1.merge_cells(f"A{row}:H{row}")
-            c = ws1.cell(row, 1, "🚑 פצועים ונעדרים")
-            _header_style(c, bg=C_SUBHEAD, size=11)
+        home_inj = match_data.get("injuries_home", [])
+        away_inj = match_data.get("injuries_away", [])
+        if home_inj or away_inj:
+            _section_title(ws1, row, "🚑 פצועים ונעדרים")
             row += 1
-            for name in (match_data.get('injuries_home') or ["ללא נפגעים"]):
-                ws1.cell(row, 1, f"🤕 {name} ({match_data['home_name']})").font = Font(name="Arial", size=10, color="FCA5A5")
+            for name in home_inj:
+                _data_row(ws1, row, [f"{name} ({home})"], bg="FEF2F2", color="DC2626")
                 row += 1
-            for name in (match_data.get('injuries_away') or ["ללא נפגעים"]):
-                ws1.cell(row, 1, f"🤕 {name} ({match_data['away_name']})").font = Font(name="Arial", size=10, color="FCA5A5")
+            for name in away_inj:
+                _data_row(ws1, row, [f"{name} ({away})"], bg="FEF2F2", color="DC2626")
                 row += 1
             row += 1
 
         # ── H2H ──
-        if match_data.get('h2h'):
-            ws1.merge_cells(f"A{row}:H{row}")
-            c = ws1.cell(row, 1, "⚔️ עימותים ישירים")
-            _header_style(c, bg=C_SUBHEAD, size=11)
+        h2h = match_data.get("h2h", [])
+        if h2h:
+            _section_title(ws1, row, "⚔️ עימותים ישירים")
             row += 1
-            for g in match_data['h2h']:
-                ws1.cell(row, 1, g.get('date','')).font = Font(name="Arial", size=9, color="6B7A99")
-                ws1.cell(row, 2, g.get('home','')).font = Font(name="Arial", size=10, color="C8D0E0")
-                ws1.cell(row, 3, g.get('result','')).font = Font(name="Arial", size=10, bold=True, color=C_ACCENT)
-                ws1.cell(row, 3).alignment = Alignment(horizontal="center")
-                ws1.cell(row, 4, g.get('away','')).font = Font(name="Arial", size=10, color="C8D0E0")
+            _header_row(ws1, row, ["תאריך", "ביתית", "תוצאה", "אורחת"], bg="334155", height=20)
+            row += 1
+            for g in h2h:
+                bg = "FFFFFF" if row % 2 == 0 else "F8FAFC"
+                _data_row(ws1, row, [g.get("date",""), g.get("home",""), g.get("result",""), g.get("away","")], bg=bg)
                 row += 1
-
-        # רוחב עמודות
-        for col, w in zip("ABCDEFGH", [28, 12, 12, 14, 10, 10, 10, 10]):
-            _set_col_width(ws1, col, w)
-
-        ws1.sheet_view.showGridLines = False
 
     # ══════════════════════════════════════════════════════
     # גיליון 2 — Value Bets
     # ══════════════════════════════════════════════════════
     ws2 = wb.create_sheet("Value Bets")
     ws2.sheet_view.rightToLeft = True
+    for col, w in zip("ABCDEFGH", [12, 28, 18, 8, 10, 12, 8, 8]):
+        ws2.column_dimensions[col].width = w
 
-    ws2.merge_cells("A1:J1")
+    ws2.merge_cells("A1:H1")
     c = ws2.cell(1, 1, f"💰 Value Bets — {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    _header_style(c, size=13)
-    ws2.row_dimensions[1].height = 28
+    c.font = _font(bold=True, size=14, color="FFFFFF")
+    c.fill = _fill("065F46")
+    c.alignment = _align("center")
+    ws2.row_dimensions[1].height = 30
 
-    vb_headers = ["תאריך", "משחק", "הימור על", "Odds", "סיכוי %", "סיכוי משתמע %", "EV", "Kelly %", "Overround %", "אתר"]
-    for col, h in enumerate(vb_headers, 1):
-        c = ws2.cell(2, col, h)
-        _header_style(c, size=10)
-
-    for i, vb in enumerate(value_bets, 3):
-        ev = vb.get("EV", 0)
-        is_high = ev > 0.10
-        bg = "0A2A1A" if is_high else C_ROW_ALT
-        fg = "6EE7B7" if is_high else "C8D0E0"
-
-        row_vals = [
-            vb.get("תאריך", ""),
-            vb.get("משחק", ""),
-            vb.get("הימור על", ""),
-            vb.get("Odds", ""),
-            f"{vb.get('סיכוי %', 0):.1f}%",
-            f"{vb.get('סיכוי משתמע %', 0):.1f}%",
-            f"+{ev:.1%}" if ev > 0 else f"{ev:.1%}",
-            f"{vb.get('Kelly %', 0):.1f}%",
-            f"{vb.get('Overround %', 0):.1f}%",
-            vb.get("אתר", ""),
-        ]
-        for col, val in enumerate(row_vals, 1):
-            c = ws2.cell(i, col, val)
-            c.font = Font(name="Arial", size=10, color=fg)
-            c.fill = PatternFill("solid", start_color=bg)
-            c.alignment = Alignment(horizontal="center")
-            c.border = _border()
-
-    for col, w in zip("ABCDEFGHIJ", [12, 30, 20, 8, 10, 14, 8, 8, 10, 12]):
-        _set_col_width(ws2, col, w)
-    ws2.sheet_view.showGridLines = False
+    if value_bets:
+        _header_row(ws2, 2, ["תאריך", "משחק", "הימור על", "Odds", "סיכוי %", "EV", "Kelly %", "Overround %"], bg="064E3B", height=22)
+        for i, vb in enumerate(value_bets, 3):
+            bg = "F0FDF4" if i % 2 == 0 else "ECFDF5"
+            vals = [
+                vb.get("תאריך",""), vb.get("משחק",""), vb.get("הימור על",""),
+                vb.get("Odds",""), vb.get("סיכוי %",""), vb.get("EV",""),
+                vb.get("Kelly %",""), vb.get("Overround %",""),
+            ]
+            _data_row(ws2, i, vals, bg=bg, color="065F46")
+    else:
+        ws2.cell(3, 1, "לא נמצאו Value Bets בסריקה האחרונה").font = _font(size=11, color="6B7280")
 
     # ══════════════════════════════════════════════════════
-    # גיליון 3 — Elo Rankings
+    # גיליון 3 — דירוג Elo
     # ══════════════════════════════════════════════════════
-    ws3 = wb.create_sheet("Elo Rankings")
+    ws3 = wb.create_sheet("דירוג Elo")
     ws3.sheet_view.rightToLeft = True
+    ws3.column_dimensions["A"].width = 6
+    ws3.column_dimensions["B"].width = 24
+    ws3.column_dimensions["C"].width = 14
 
     ws3.merge_cells("A1:C1")
-    c = ws3.cell(1, 1, "📊 דירוג Elo — מונדיאל 2026")
-    _header_style(c, size=13)
-    ws3.row_dimensions[1].height = 28
+    c = ws3.cell(1, 1, "📊 דירוג עוצמת הנבחרות — מונדיאל 2026")
+    c.font = _font(bold=True, size=14, color="FFFFFF")
+    c.fill = _fill("1E3A8A")
+    c.alignment = _align("center")
+    ws3.row_dimensions[1].height = 30
 
-    for col, h in enumerate(["#", "נבחרת", "מדד Elo"], 1):
-        c = ws3.cell(2, col, h)
-        _header_style(c, size=10)
+    _header_row(ws3, 2, ["#", "נבחרת", "Elo"], bg="334155", height=22)
 
     for i, team in enumerate(elo_rankings, 1):
         elo = team.get("elo_rating", 0)
-        if elo >= 1700:
-            fg, bg = C_GOLD, "1A1200"
-        elif elo >= 1600:
-            fg, bg = C_ACCENT, "0A1520"
-        else:
-            fg, bg = "C8D0E0", C_ROW_ALT
+        if elo >= 1700: bg, fg = "DBEAFE", "1E40AF"
+        elif elo >= 1600: bg, fg = "F0FDF4", "166534"
+        else: bg, fg = "FFFFFF" if i%2==0 else "F8FAFC", "374151"
 
-        ws3.cell(i+2, 1, i).font = Font(name="Arial", size=10, color="6B7A99")
-        ws3.cell(i+2, 1).alignment = Alignment(horizontal="center")
+        ws3.cell(i+2, 1, i).alignment = _align("center")
+        ws3.cell(i+2, 2, team.get("name","")).font = _font(bold=(elo>=1700), size=10, color=fg)
+        ws3.cell(i+2, 3, elo).font = _font(bold=(elo>=1700), size=10, color=fg)
+        ws3.cell(i+2, 3).alignment = _align("center")
+        for col in range(1,4):
+            ws3.cell(i+2, col).fill = _fill(bg)
+            ws3.cell(i+2, col).border = _border_bottom()
 
-        c = ws3.cell(i+2, 2, team.get("name", ""))
-        c.font = Font(name="Arial", size=10, color=fg, bold=(elo >= 1700))
-        c.fill = PatternFill("solid", start_color=bg)
-
-        c = ws3.cell(i+2, 3, elo)
-        c.font = Font(name="Arial", size=11, color=fg, bold=(elo >= 1700))
-        c.fill = PatternFill("solid", start_color=bg)
-        c.alignment = Alignment(horizontal="center")
-        c.border = _border()
-
-    for col, w in zip("ABC", [6, 24, 12]):
-        _set_col_width(ws3, col, w)
-    ws3.sheet_view.showGridLines = False
-
-    # ── שמירה ל-bytes ──
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
