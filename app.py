@@ -29,103 +29,69 @@ html, body, [class*="css"] {
     direction: rtl;
 }
 
-.stApp {
-    background: #1c2a42;
-    color: #e8eaf0;
-}
-
-/* Main content area */
-section[data-testid="stMainBlockContainer"],
-div[data-testid="stMain"] {
-    background: #1c2a42;
-}
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background: #162035;
-}
-
-h1, h2, h3 {
-    font-family: 'Space Grotesk', sans-serif;
-}
-
 /* Header */
 .main-header {
-    background: linear-gradient(135deg, #1a2d5a 0%, #2a1550 100%);
-    border: 1px solid #2e4a8e;
+    background: linear-gradient(135deg, #1d4ed8 0%, #4f46e5 100%);
     border-radius: 16px;
     padding: 32px 40px;
-    margin-bottom: 32px;
+    margin-bottom: 24px;
 }
-.main-header h1 { font-size: 2.2rem; font-weight: 700; color: #ffffff; margin: 0 0 8px 0; }
-.main-header p  { color: #aab8d4; margin: 0; font-size: 0.95rem; }
+.main-header h1 { font-size: 2rem; font-weight: 700; color: #ffffff; margin: 0 0 6px 0; }
+.main-header p  { color: #bfdbfe; margin: 0; font-size: 0.92rem; }
 
 /* Metric cards */
 .metric-card {
-    background: #1a2540;
-    border: 1px solid #2e4070;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
     border-radius: 12px;
-    padding: 20px 24px;
+    padding: 18px 20px;
     text-align: center;
 }
-.metric-value { font-family: 'Space Grotesk', sans-serif; font-size: 2rem; font-weight: 700; color: #60a5fa; line-height: 1; margin-bottom: 6px; }
-.metric-label { font-size: 0.78rem; color: #8899bb; text-transform: uppercase; letter-spacing: 0.08em; }
+.metric-value { font-family: 'Space Grotesk', sans-serif; font-size: 1.9rem; font-weight: 700; color: #1d4ed8; line-height: 1; margin-bottom: 6px; }
+.metric-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* Probability bars */
-.prob-bar-container { background: #1a2540; border: 1px solid #2e4070; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
-.prob-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.prob-label { font-size: 0.85rem; color: #aab8d4; width: 60px; text-align: right; flex-shrink: 0; }
-.prob-bar-wrap { flex: 1; background: #243050; border-radius: 6px; height: 28px; overflow: hidden; }
+.prob-bar-container { background: #f8faff; border: 1px solid #dbeafe; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.prob-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.prob-label { font-size: 0.83rem; color: #374151; width: 90px; text-align: right; flex-shrink: 0; font-weight: 500; }
+.prob-bar-wrap { flex: 1; background: #e2e8f0; border-radius: 6px; height: 28px; overflow: hidden; }
 .prob-bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #fff; }
 .bar-home { background: linear-gradient(90deg, #1d4ed8, #3b82f6); }
-.bar-draw { background: linear-gradient(90deg, #6b21a8, #a855f7); }
-.bar-away { background: linear-gradient(90deg, #0f766e, #14b8a6); }
+.bar-draw { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+.bar-away { background: linear-gradient(90deg, #0f766e, #2dd4bf); }
 
 /* Value badge */
-.value-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
-.value-positive { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); }
-.value-negative { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.value-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.76rem; font-weight: 600; }
+.value-positive { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+.value-negative { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
 
 /* Score matrix */
-.score-item { background: #1a2540; border: 1px solid #2e4070; border-radius: 8px; padding: 10px 14px; text-align: center; margin-bottom: 8px; }
-.score-result { font-family: 'Space Grotesk', monospace; font-size: 1.1rem; font-weight: 700; color: #e8eaf0; }
-.score-prob { font-size: 0.75rem; color: #8899bb; margin-top: 2px; }
+.score-item { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 10px 14px; text-align: center; margin-bottom: 8px; }
+.score-result { font-family: 'Space Grotesk', monospace; font-size: 1.1rem; font-weight: 700; color: #0f172a; }
+.score-prob { font-size: 0.74rem; color: #64748b; margin-top: 2px; }
 
 /* Intel section */
-.intel-box { background: #162035; border: 1px solid #2e4070; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; }
-.intel-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: #6688bb; margin-bottom: 10px; }
-
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] { background: #1a2540; border-radius: 10px; padding: 4px; gap: 4px; border: 1px solid #2e4070; }
-.stTabs [data-baseweb="tab"] { border-radius: 8px; color: #8899bb; font-weight: 500; font-size: 0.9rem; padding: 8px 20px; }
-.stTabs [aria-selected="true"] { background: #1d4ed8 !important; color: #ffffff !important; }
-
-/* Buttons */
-.stButton > button {
-    background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
-    color: white !important; border: none !important; border-radius: 10px !important;
-    font-weight: 600 !important; padding: 10px 24px !important; font-size: 0.9rem !important;
-}
-.stDownloadButton > button {
-    background: linear-gradient(135deg, #059669, #10b981) !important;
-    color: white !important; border: none !important; border-radius: 10px !important;
-    font-weight: 700 !important; padding: 12px 24px !important; font-size: 1rem !important;
-}
+.intel-box { background: #f8faff; border: 1px solid #dbeafe; border-radius: 10px; padding: 14px 18px; margin-bottom: 10px; }
+.intel-title { font-size: 0.70rem; text-transform: uppercase; letter-spacing: 0.1em; color: #6b7280; margin-bottom: 8px; font-weight: 600; }
 
 /* Alert boxes */
-.alert-box { border-radius: 10px; padding: 14px 18px; margin: 12px 0; font-size: 0.88rem; line-height: 1.5; }
-.alert-value { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35); color: #6ee7b7; }
-.alert-warn  { background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.3); color: #fcd34d; }
-.alert-info  { background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; }
+.alert-box { border-radius: 10px; padding: 12px 16px; margin: 10px 0; font-size: 0.87rem; line-height: 1.5; }
+.alert-value { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+.alert-warn  { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.alert-info  { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
 
 /* Kelly recommendation */
-.kelly-rec { background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.05)); border: 1px solid rgba(16,185,129,0.3); border-radius: 10px; padding: 16px 20px; margin-top: 12px; }
-.kelly-rec .k-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: #10b981; margin-bottom: 8px; }
-.kelly-rec .k-value { font-family: 'Space Grotesk'; font-size: 1.8rem; font-weight: 700; color: #34d399; }
-.kelly-rec .k-sub   { font-size: 0.8rem; color: #8899bb; margin-top: 4px; }
+.kelly-rec { background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 16px 20px; margin-top: 12px; }
+.kelly-rec .k-title { font-size: 0.70rem; text-transform: uppercase; letter-spacing: 0.1em; color: #15803d; margin-bottom: 6px; font-weight: 600; }
+.kelly-rec .k-value { font-family: 'Space Grotesk'; font-size: 1.8rem; font-weight: 700; color: #16a34a; }
+.kelly-rec .k-sub   { font-size: 0.8rem; color: #4b5563; margin-top: 4px; }
 
-/* DataFrames */
-[data-testid="stDataFrame"] { border-radius: 8px; overflow: hidden; }
+/* Download button */
+.stDownloadButton > button {
+    background: linear-gradient(135deg, #16a34a, #22c55e) !important;
+    color: white !important; border: none !important; border-radius: 10px !important;
+    font-weight: 700 !important; font-size: 1rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
