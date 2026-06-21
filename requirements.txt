@@ -1,0 +1,4 @@
+supabase
+requests
+scipy
+python-dotenv
