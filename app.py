@@ -30,8 +30,19 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background: #0f1623;
+    background: #1c2a42;
     color: #e8eaf0;
+}
+
+/* Main content area */
+section[data-testid="stMainBlockContainer"],
+div[data-testid="stMain"] {
+    background: #1c2a42;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: #162035;
 }
 
 h1, h2, h3 {
@@ -377,14 +388,30 @@ with tab_intel:
 
                 else:
                     # Fallback — הכנסה ידנית
-                    st.markdown('<div class="alert-box alert-warn">⚠️ לא נמצאו odds אוטומטיים למשחק זה — הכנס ידנית:</div>', unsafe_allow_html=True)
+                    st.markdown("""
+                    <div class="alert-box alert-warn">
+                    ⚠️ <b>Odds אוטומטיים לא זמינים עדיין</b> למשחק זה.<br>
+                    הכנס ידנית מ-Bet365 / William Hill / Pinnacle כדי לחשב EV ו-Kelly.
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # הצג טבלת יחסים הוגנים כנקודת ייחוס
+                    st.markdown("**📌 יחסים הוגנים לפי המודל (ללא margin):**")
+                    ref_df = pd.DataFrame([
+                        {"תוצאה": f"{home['name']} מנצחת", "סיכוי %": analysis["home"]["our_prob"], "יחס הוגן": analysis["home"]["fair_odds"], "פירוש": "אם האתר מציע יותר — זה Value"},
+                        {"תוצאה": "תיקו",                   "סיכוי %": analysis["draw"]["our_prob"], "יחס הוגן": analysis["draw"]["fair_odds"], "פירוש": "אם האתר מציע יותר — זה Value"},
+                        {"תוצאה": f"{away['name']} מנצחת", "סיכוי %": analysis["away"]["our_prob"], "יחס הוגן": analysis["away"]["fair_odds"], "פירוש": "אם האתר מציע יותר — זה Value"},
+                    ])
+                    st.dataframe(ref_df, use_container_width=True, hide_index=True)
+
+                    st.markdown("**הכנס odds מהאתר שלך:**")
                     mc1, mc2, mc3 = st.columns(3)
                     with mc1:
-                        manual_home = st.number_input(f"יחס — {home['name']}", min_value=1.01, max_value=50.0, value=2.0, step=0.05, format="%.2f", key="mh")
+                        manual_home = st.number_input(f"יחס — {home['name']}", min_value=1.01, max_value=50.0, value=float(analysis["home"]["fair_odds"]), step=0.05, format="%.2f", key="mh")
                     with mc2:
-                        manual_draw = st.number_input("יחס — תיקו", min_value=1.01, max_value=50.0, value=3.2, step=0.05, format="%.2f", key="md")
+                        manual_draw = st.number_input("יחס — תיקו", min_value=1.01, max_value=50.0, value=float(analysis["draw"]["fair_odds"]), step=0.05, format="%.2f", key="md")
                     with mc3:
-                        manual_away = st.number_input(f"יחס — {away['name']}", min_value=1.01, max_value=50.0, value=3.5, step=0.05, format="%.2f", key="ma")
+                        manual_away = st.number_input(f"יחס — {away['name']}", min_value=1.01, max_value=50.0, value=float(analysis["away"]["fair_odds"]), step=0.05, format="%.2f", key="ma")
                     bookmaker_name = st.text_input("שם האתר", placeholder="Bet365", key="bm_name")
 
                     if st.button("⚡ חשב EV ו-Kelly", key="calc_ev"):
