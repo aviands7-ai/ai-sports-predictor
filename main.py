@@ -66,10 +66,10 @@ def update_team_elo_db(team_id, new_elo):
 
 # --- המוח המרכזי (Pipeline) ---
 def run_pipeline():
-    print("🚀 שואב את משחקי מונדיאל 2022 מ-API...")
+    print("🚀 שואב את משחקי מונדיאל 2026 מ-API...")
     url = "https://v3.football.api-sports.io/fixtures"
     headers = {"x-apisports-key": SPORTS_API_KEY}
-    params = {"league": "1", "season": "2022", "from": "2022-11-20", "to": "2022-12-18"}
+    params = {"league": "1", "season": "2026", "from": "2026-06-11", "to": "2026-07-19"}
     
     response = requests.get(url, headers=headers, params=params).json()
     matches = response.get("response", [])

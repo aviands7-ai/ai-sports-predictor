@@ -80,7 +80,7 @@ with tab1:
         # מושך את כל הטורניר בבת אחת ושומר בזיכרון!
         url = "https://v3.football.api-sports.io/fixtures"
         headers = {"x-apisports-key": SPORTS_API_KEY}
-        params = {"league": "1", "season": "2022", "from": "2022-11-20", "to": "2022-12-18"}
+        params = {"league": "1", "season": "2026", "from": "2026-06-11", "to": "2026-07-19"}
         res = requests.get(url, headers=headers, params=params).json()
         return res.get("response", [])
 
