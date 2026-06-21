@@ -337,19 +337,29 @@ with tab_intel:
                 scores_rows = ""
                 for score_str, pct in analysis["top_scores"]:
                     bar_w = min(int(pct * 5), 100)
+                    # פרסר את התוצאה לשני מספרים
+                    parts = score_str.split("-")
+                    home_goals = parts[0] if len(parts) == 2 else "?"
+                    away_goals = parts[1] if len(parts) == 2 else "?"
                     scores_rows += f"""
 <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f8fafc;direction:rtl">
-  <span style="font-family:monospace;font-size:15px;font-weight:700;min-width:36px;text-align:right">{score_str}</span>
+  <span style="font-size:12px;color:#374151;min-width:28px;text-align:right">{home_goals}</span>
+  <span style="font-size:11px;color:#9ca3af">—</span>
+  <span style="font-size:12px;color:#374151;min-width:28px">{away_goals}</span>
   <div style="flex:1;background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden">
     <div style="background:#3b82f6;width:{bar_w}%;height:100%;border-radius:4px"></div>
   </div>
-  <span style="font-size:12px;color:#6b7280;min-width:32px;text-align:left">{pct}%</span>
+  <span style="font-size:12px;color:#6b7280;min-width:36px;text-align:left">{pct}%</span>
 </div>"""
 
                 st.markdown(f"""
 <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;direction:rtl">
-  <div style="font-weight:600;font-size:14px;margin-bottom:4px;text-align:right">⚽ תוצאות סבירות</div>
-  <div style="font-size:11px;color:#6b7280;margin-bottom:12px;text-align:right">{home_name_short} (ביתית) — {away_name_short} (אורחת)</div>
+  <div style="font-weight:600;font-size:14px;margin-bottom:8px;text-align:right">⚽ תוצאות סבירות</div>
+  <div style="display:flex;font-size:11px;color:#6b7280;margin-bottom:10px;gap:10px">
+    <span style="min-width:28px;text-align:right;font-weight:600;color:#1d4ed8">{home_name_short}</span>
+    <span>—</span>
+    <span style="font-weight:600;color:#7c3aed">{away_name_short}</span>
+  </div>
   {scores_rows}
 </div>
 """, unsafe_allow_html=True)
