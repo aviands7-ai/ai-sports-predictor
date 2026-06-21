@@ -84,10 +84,54 @@ with tab_intel:
     if not all_fixtures:
         st.error("לא ניתן לטעון משחקים. בדוק חיבור ו-API Key.")
     else:
+        # ── בחירת תאריך חכמה — מוצא אוטומטית את המשחק הרלוונטי ──
+        from datetime import date, datetime, timezone
+
+        def find_smart_date(fixtures):
+            """
+            מוצא את התאריך הטוב ביותר:
+            1. אם היום יש משחקים — היום
+            2. אחרת — התאריך הקרוב הבא שיש בו משחקים
+            """
+            today = date.today().strftime("%Y-%m-%d")
+            dates_with_fixtures = sorted(set(
+                f["fixture"]["date"][:10] for f in fixtures
+            ))
+            # האם יש משחקים היום?
+            if today in dates_with_fixtures:
+                return today
+            # מצא את התאריך הקרוב הבא
+            future = [d for d in dates_with_fixtures if d >= today]
+            if future:
+                return future[0]
+            # אם הכל בעבר — תאריך אחרון
+            return dates_with_fixtures[-1] if dates_with_fixtures else today
+
+        def find_smart_match(day_fixtures):
+            """
+            מוצא את המשחק הרלוונטי ביותר ביום נתון:
+            1. משחק שמתקיים כרגע (LIVE)
+            2. המשחק הקרוב ביותר שטרם התחיל
+            3. המשחק האחרון שהסתיים
+            """
+            now_utc = datetime.now(timezone.utc)
+            live = [f for f in day_fixtures if f["fixture"]["status"]["short"] in ("1H","2H","HT","ET","BT","P")]
+            if live:
+                return live[0]
+            upcoming = [f for f in day_fixtures if f["fixture"]["status"]["short"] in ("NS","TBD")]
+            if upcoming:
+                upcoming.sort(key=lambda x: x["fixture"]["timestamp"])
+                return upcoming[0]
+            # הכל נגמר — החזר אחרון
+            return day_fixtures[-1] if day_fixtures else None
+
+        smart_date = find_smart_date(all_fixtures)
+        smart_date_pd = pd.to_datetime(smart_date)
+
         col_date, col_match, col_btn = st.columns([1, 3, 1])
 
         with col_date:
-            selected_date = st.date_input("תאריך", pd.to_datetime("2026-06-21"), label_visibility="collapsed")
+            selected_date = st.date_input("תאריך", smart_date_pd, label_visibility="collapsed")
 
         date_str = selected_date.strftime("%Y-%m-%d")
         day_fixtures = [f for f in all_fixtures if f["fixture"]["date"].startswith(date_str)]
@@ -97,11 +141,27 @@ with tab_intel:
                 st.warning("אין משחקים בתאריך זה.")
                 selected = None
             else:
+                # מצא את המשחק החכם לבחירה אוטומטית
+                smart_match = find_smart_match(day_fixtures)
                 match_options = {
                     f"{f['teams']['home']['name']} נגד {f['teams']['away']['name']}": f
                     for f in day_fixtures
                 }
-                selected_name = st.selectbox("בחר משחק", list(match_options.keys()), label_visibility="collapsed")
+                match_names = list(match_options.keys())
+                # קבע index ברירת מחדל
+                default_name = f"{smart_match['teams']['home']['name']} נגד {smart_match['teams']['away']['name']}" if smart_match else match_names[0]
+                default_idx = match_names.index(default_name) if default_name in match_names else 0
+
+                # הצג סטטוס המשחק החכם
+                if smart_match:
+                    status = smart_match["fixture"]["status"]["short"]
+                    if status in ("1H","2H","HT","ET","BT","P"):
+                        st.caption("🔴 משחק חי כרגע")
+                    elif status in ("NS","TBD"):
+                        match_time_str = smart_match["fixture"]["date"][11:16]
+                        st.caption(f"⏰ המשחק הקרוב — {match_time_str} UTC")
+
+                selected_name = st.selectbox("בחר משחק", match_names, index=default_idx, label_visibility="collapsed")
                 selected = match_options[selected_name]
 
         with col_btn:
