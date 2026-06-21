@@ -37,9 +37,13 @@ from export_report import build_excel_report
 from decision_engine import get_flag_url, analyze_recent_form, calculate_team_score, generate_decision
 
 # ─── כותרת ─────────────────────────────────────────────────────────────────────
-st.title("🏆 World Cup 2026 Predictor")
-st.caption("מנוע חיזוי מבוסס Elo + Poisson Distribution + Kelly Criterion")
-st.divider()
+st.markdown("""
+<div style="text-align:center;padding:32px 20px 24px;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#0f172a 100%);border-radius:16px;margin-bottom:24px">
+  <div style="font-size:48px;margin-bottom:8px">🏆</div>
+  <div style="font-size:32px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;margin-bottom:6px">World Cup 2026 Predictor</div>
+  <div style="font-size:13px;color:#93c5fd;letter-spacing:0.1em;text-transform:uppercase">Elo &nbsp;·&nbsp; Poisson Distribution &nbsp;·&nbsp; Kelly Criterion &nbsp;·&nbsp; Value Bets</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ─── טאבים ─────────────────────────────────────────────────────────────────────
 tab_intel, tab_value, tab_rankings, tab_backtest, tab_glossary = st.tabs([
