@@ -260,8 +260,8 @@ with tab_intel:
       </td>
     </tr>
   </table>
-  <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">5 משחקים אחרונים</div>
-  <div style="display:flex;gap:5px;margin-bottom:14px">{badges}</div>
+  <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;text-align:right">5 משחקים אחרונים</div>
+  <div style="display:flex;gap:5px;margin-bottom:14px;justify-content:flex-end">{badges}</div>
   <table style="width:100%;border-collapse:collapse;text-align:center">
     <tr>
       <td style="font-size:11px;color:#6b7280;padding:4px">שערים/מ׳</td>
@@ -307,7 +307,7 @@ with tab_intel:
 
                     rows_html += f"""
 <tr style="border-bottom:1px solid #f1f5f9">
-  <td style="padding:10px 8px;font-weight:500">{label_o}</td>
+  <td style="padding:10px 8px;font-weight:500;text-align:right">{label_o}</td>
   <td style="text-align:center;font-weight:600;padding:10px 8px">{la['our_prob']}%</td>
   <td style="text-align:center;color:#6b7280;padding:10px 8px">{la['fair_odds']}</td>
   <td style="text-align:center;font-weight:500;padding:10px 8px">{odds_str}</td>
@@ -315,7 +315,7 @@ with tab_intel:
   {val_str}
 </tr>"""
 
-                headers = "<th style='padding:8px;color:#6b7280;font-weight:500;font-size:11px;text-transform:uppercase'>תוצאה</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>סיכוי</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>יחס הוגן</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>Odds</th>"
+                headers = "<th style='padding:8px;color:#6b7280;font-weight:500;font-size:11px;text-transform:uppercase;text-align:right'>תוצאה</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>סיכוי</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>יחס הוגן</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>Odds</th>"
                 if live_od:
                     headers += "<th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>EV</th><th style='text-align:center;padding:8px;color:#6b7280;font-weight:500;font-size:11px'>Value?</th>"
 
@@ -369,7 +369,7 @@ with tab_intel:
                     for g in h2h[-5:]:
                         gh = g["goals"]["home"] or 0
                         ga = g["goals"]["away"] or 0
-                        h2h_rows += f"<tr><td style='padding:6px 8px;color:#6b7280'>{g['fixture']['date'][:10]}</td><td style='padding:6px 8px;text-align:right'>{g['teams']['home']['name']}</td><td style='padding:6px 8px;text-align:center;font-family:monospace;font-weight:600'>{gh}-{ga}</td><td style='padding:6px 8px'>{g['teams']['away']['name']}</td></tr>"
+                        h2h_rows += f"<tr><td style='padding:6px 8px;color:#6b7280'>{g['fixture']['date'][:10]}</td><td style='padding:6px 8px;text-align:right;direction:rtl'>{g['teams']['home']['name']}</td><td style='padding:6px 8px;text-align:center;font-family:monospace;font-weight:600'>{gh}-{ga}</td><td style='padding:6px 8px'>{g['teams']['away']['name']}</td></tr>"
                     st.markdown(f"""
 <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;direction:rtl">
   <div style="padding:10px 16px;border-bottom:1px solid #f1f5f9;font-weight:600;font-size:13px">⚔️ עימותים ישירים</div>
