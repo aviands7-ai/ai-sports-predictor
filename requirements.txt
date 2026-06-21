@@ -1,4 +1,7 @@
 supabase
 requests
 scipy
+numpy
+pandas
 python-dotenv
+streamlit
