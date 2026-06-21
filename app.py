@@ -214,12 +214,12 @@ with tab_intel:
   <table style="width:100%;border-collapse:collapse">
     <tr>
       <td style="width:50%;vertical-align:top;padding-left:16px">
-        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">נימוקים לבחירה</div>
-        <div style="font-size:13px;line-height:1.9;color:#374151">{reasons_html or "—"}</div>
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;text-align:right">נימוקים לבחירה</div>
+        <div style="font-size:13px;line-height:1.9;color:#374151;text-align:right">{reasons_html or "—"}</div>
       </td>
       <td style="width:50%;vertical-align:top">
-        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">סיכונים</div>
-        <div style="font-size:13px;line-height:1.9;color:#374151">{risks_html or "—"}</div>
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;text-align:right">סיכונים</div>
+        <div style="font-size:13px;line-height:1.9;color:#374151;text-align:right">{risks_html or "—"}</div>
       </td>
     </tr>
   </table>
@@ -332,12 +332,12 @@ with tab_intel:
                     st.caption(f"Odds מ-{md.get('live_bm','?')}")
 
             with col_scores:
+                home_name_short = home["name"]
+                away_name_short = away["name"]
                 scores_rows = ""
                 for score_str, pct in analysis["top_scores"]:
                     bar_w = min(int(pct * 5), 100)
-                    home_name_short = home["name"]
-                away_name_short = away["name"]
-                scores_rows += f"""
+                    scores_rows += f"""
 <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f8fafc;direction:rtl">
   <span style="font-family:monospace;font-size:15px;font-weight:700;min-width:36px;text-align:right">{score_str}</span>
   <div style="flex:1;background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden">
