@@ -559,7 +559,7 @@ with tab_rankings:
             return "color: #6b7a99"
 
         st.dataframe(
-            df_teams.style.applymap(color_elo, subset=["מדד Elo"]),
+            df_teams.style.map(color_elo, subset=["מדד Elo"]),
             use_container_width=True,
             height=600
         )
