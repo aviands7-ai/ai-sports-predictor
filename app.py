@@ -258,8 +258,8 @@ h1, h2, h3 {
 
 
 # ─── Imports (after page config) ───────────────────────────────────────────────
-from api_client import get_all_fixtures, get_injuries, get_odds, get_head_to_head, get_api_status
-from engine import full_match_analysis, match_probabilities
+from api_client import get_all_fixtures, get_injuries, get_odds, get_head_to_head, get_api_status, get_team_last_matches
+from engine import full_match_analysis, match_probabilities, calculate_form_factor, get_starting_elo, odds_freshness
 from db import get_all_teams, get_team_elo
 from backtest import run_full_backtest
 
@@ -328,21 +328,55 @@ with tab_intel:
             with st.spinner("שואב נתונים..."):
                 elo_home = get_team_elo(home["id"])
                 elo_away = get_team_elo(away["id"])
-                odds = get_odds(fixture_id) or {"home": 0.0, "draw": 0.0, "away": 0.0}
-                analysis = full_match_analysis(elo_home, elo_away, odds, home_advantage=0.0)
+
+                last_home = get_team_last_matches(home["id"], last=5)
+                last_away = get_team_last_matches(away["id"], last=5)
+                form_home = calculate_form_factor(last_home, home["id"])
+                form_away = calculate_form_factor(last_away, away["id"])
+
+                odds_data = get_odds(fixture_id)
+                odds_updated_at = odds_data.get("updated_at") if odds_data else None
+                odds_bm = odds_data.get("bookmaker", "?") if odds_data else "?"
+                odds = {k: odds_data[k] for k in ["home","draw","away"] if odds_data and k in odds_data} or {"home": 0.0, "draw": 0.0, "away": 0.0}
+
+                analysis = full_match_analysis(
+                    elo_home, elo_away, odds,
+                    home_advantage=0.0,
+                    form_home=form_home,
+                    form_away=form_away,
+                    odds_updated_at=odds_updated_at
+                )
                 injuries = get_injuries(fixture_id)
                 h2h = get_head_to_head(home["id"], away["id"], last=10)
+                freshness = analysis.get("odds_freshness", {})
 
             # ─── Match Summary Row ──────────────────────────────────
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2, c3, c4, c5, c6 = st.columns(6)
             with c1:
                 st.markdown(f'<div class="metric-card"><div class="metric-value">{elo_home:.0f}</div><div class="metric-label">Elo — {home["name"]}</div></div>', unsafe_allow_html=True)
             with c2:
                 st.markdown(f'<div class="metric-card"><div class="metric-value">{elo_away:.0f}</div><div class="metric-label">Elo — {away["name"]}</div></div>', unsafe_allow_html=True)
             with c3:
-                st.markdown(f'<div class="metric-card"><div class="metric-value">{analysis["xg_home"]}</div><div class="metric-label">xG צפוי — {home["name"]}</div></div>', unsafe_allow_html=True)
+                form_h_color = "#10b981" if form_home > 1.0 else ("#ef4444" if form_home < 1.0 else "#60a5fa")
+                st.markdown(f'<div class="metric-card"><div class="metric-value" style="color:{form_h_color}">{form_home:.2f}x</div><div class="metric-label">טופס — {home["name"]}</div></div>', unsafe_allow_html=True)
             with c4:
-                st.markdown(f'<div class="metric-card"><div class="metric-value">{analysis["xg_away"]}</div><div class="metric-label">xG צפוי — {away["name"]}</div></div>', unsafe_allow_html=True)
+                form_a_color = "#10b981" if form_away > 1.0 else ("#ef4444" if form_away < 1.0 else "#60a5fa")
+                st.markdown(f'<div class="metric-card"><div class="metric-value" style="color:{form_a_color}">{form_away:.2f}x</div><div class="metric-label">טופס — {away["name"]}</div></div>', unsafe_allow_html=True)
+            with c5:
+                st.markdown(f'<div class="metric-card"><div class="metric-value">{analysis["xg_home"]}</div><div class="metric-label">xG — {home["name"]}</div></div>', unsafe_allow_html=True)
+            with c6:
+                st.markdown(f'<div class="metric-card"><div class="metric-value">{analysis["xg_away"]}</div><div class="metric-label">xG — {away["name"]}</div></div>', unsafe_allow_html=True)
+
+            # ─── Odds Freshness Banner ──────────────────────────────
+            f_color = freshness.get("color", "#6b7a99")
+            f_label = freshness.get("label", "⚪ אין נתונים")
+            f_status = freshness.get("status", "missing")
+            if f_status == "missing":
+                st.markdown(f'<div class="alert-box alert-warn">⚠️ <b>אין יחסי הימורים</b> זמינים למשחק זה — EV ו-Kelly לא אמינים. אל תסמוך על המספרים.</div>', unsafe_allow_html=True)
+            elif f_status in ("stale", "old"):
+                st.markdown(f'<div class="alert-box alert-warn">⚠️ <b>Odds ישנים:</b> {f_label} (מאתר: {odds_bm}) — יחסים אלה עלולים להיות לא רלוונטיים.</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="alert-box alert-info">✓ <b>Odds עדכניים:</b> {f_label} · מאתר: {odds_bm}</div>', unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -559,7 +593,7 @@ with tab_rankings:
             return "color: #6b7a99"
 
         st.dataframe(
-            df_teams.style.map(color_elo, subset=["מדד Elo"]),
+            df_teams.style.applymap(color_elo, subset=["מדד Elo"]),
             use_container_width=True,
             height=600
         )
