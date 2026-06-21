@@ -103,7 +103,7 @@ from db import get_all_teams, get_team_elo
 from backtest import run_full_backtest
 from odds_api import get_live_odds, get_best_odds
 from export_report import build_excel_report
-from decision_engine import get_flag, analyze_recent_form, calculate_team_score, generate_decision
+from decision_engine import get_flag, get_flag_url, analyze_recent_form, calculate_team_score, generate_decision
 
 
 # ─── Header ────────────────────────────────────────────────────────────────────
@@ -230,28 +230,30 @@ with tab_intel:
             decision   = md["decision"]
             live_od    = md["live_od"]
 
-            flag_h = get_flag(home["name"])
-            flag_a = get_flag(away["name"])
+            flag_url_h = get_flag_url(home["name"])
+            flag_url_a = get_flag_url(away["name"])
+            flag_img_h = f'<img src="{flag_url_h}" style="width:80px;height:54px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.3)">' if flag_url_h else f'<div style="font-size:2.5rem;font-weight:800;color:#fff">{home["name"][:2].upper()}</div>'
+            flag_img_a = f'<img src="{flag_url_a}" style="width:80px;height:54px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.3)">' if flag_url_a else f'<div style="font-size:2.5rem;font-weight:800;color:#fff">{away["name"][:2].upper()}</div>'
 
             # ══════════════════════════════════════════════════════
             # SECTION 1 — כותרת משחק
             # ══════════════════════════════════════════════════════
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#1e3a8a,#312e81);border-radius:16px;padding:24px 32px;margin-bottom:20px;text-align:center">
-                <div style="font-size:0.8rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:12px">
+            <div style="background:linear-gradient(135deg,#1e3a8a,#312e81);border-radius:16px;padding:28px 32px;margin-bottom:20px;text-align:center">
+                <div style="font-size:0.78rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:20px">
                     🏟️ {venue}, {city} &nbsp;·&nbsp; {match_time} UTC
                 </div>
-                <div style="display:flex;align-items:center;justify-content:center;gap:24px">
+                <div style="display:flex;align-items:center;justify-content:center;gap:40px">
                     <div style="text-align:center">
-                        <div style="font-size:3.5rem">{flag_h}</div>
-                        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin-top:6px">{home["name"]}</div>
-                        <div style="font-size:0.8rem;color:#93c5fd">Elo {elo_home:.0f}</div>
+                        {flag_img_h}
+                        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin-top:10px">{home["name"]}</div>
+                        <div style="font-size:0.8rem;color:#93c5fd;margin-top:2px">Elo {elo_home:.0f}</div>
                     </div>
-                    <div style="font-size:2rem;color:#60a5fa;font-weight:300">VS</div>
+                    <div style="font-size:2.5rem;color:#60a5fa;font-weight:200;padding:0 10px">VS</div>
                     <div style="text-align:center">
-                        <div style="font-size:3.5rem">{flag_a}</div>
-                        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin-top:6px">{away["name"]}</div>
-                        <div style="font-size:0.8rem;color:#93c5fd">Elo {elo_away:.0f}</div>
+                        {flag_img_a}
+                        <div style="font-size:1.3rem;font-weight:700;color:#fff;margin-top:10px">{away["name"]}</div>
+                        <div style="font-size:0.8rem;color:#93c5fd;margin-top:2px">Elo {elo_away:.0f}</div>
                     </div>
                 </div>
             </div>
@@ -311,82 +313,67 @@ with tab_intel:
             st.markdown(decision_html, unsafe_allow_html=True)
 
             # ══════════════════════════════════════════════════════
-            # SECTION 3 — ניתוח קבוצות זה מול זה
+            # SECTION 3 — כרטיסי קבוצות (Streamlit Native)
             # ══════════════════════════════════════════════════════
             col_h, col_a = st.columns(2)
 
-            def render_team_card(name, flag, elo, score, form, factor):
-                trend_icon = {"rising": "📈", "falling": "📉", "stable": "➡️", "unknown": "❓"}.get(form.get("trend",""), "❓")
-                trend_label = {"rising": "עלייה", "falling": "ירידה", "stable": "יציב", "unknown": "?"}.get(form.get("trend",""), "")
+            def render_team_panel(col, name, flag_url, elo, score, form, factor):
+                with col:
+                    # כותרת קבוצה
+                    if flag_url:
+                        st.markdown(f'<div style="text-align:center;margin-bottom:8px"><img src="{flag_url}" style="width:64px;height:42px;object-fit:cover;border-radius:5px;box-shadow:0 2px 6px rgba(0,0,0,0.15)"></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align:center;font-size:1.2rem;font-weight:700;color:#0f172a;margin-bottom:2px">{name}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align:center;font-size:0.78rem;color:#6b7280;margin-bottom:16px">Elo {elo:.0f} · טופס {factor:.2f}x</div>', unsafe_allow_html=True)
 
-                results = form.get("results", [])
-                result_html = ""
-                for r in results:
-                    color = {"W": "#16a34a", "D": "#d97706", "L": "#dc2626"}.get(r, "#94a3b8")
-                    label = {"W": "נ", "D": "ת", "L": "ה"}.get(r, "?")
-                    result_html += f'<span style="background:{color};color:#fff;border-radius:4px;padding:3px 8px;font-size:0.78rem;font-weight:700;margin:2px">{label}</span>'
+                    # ציון כולל
+                    st.markdown(f'<div style="text-align:center;font-size:2.6rem;font-weight:800;color:#1d4ed8;line-height:1">{score["total"]:.0f}<span style="font-size:1rem;color:#94a3b8;font-weight:400">/100</span></div>', unsafe_allow_html=True)
+                    st.markdown('<div style="text-align:center;font-size:0.72rem;color:#6b7280;margin-bottom:16px">ציון כולל</div>', unsafe_allow_html=True)
 
-                # ציוני קטגוריות
-                cats = [
-                    ("עוצמה (Elo)", score["elo"]),
-                    ("טופס", score["form"]),
-                    ("התקפה", score["attack"]),
-                    ("הגנה", score["defense"]),
-                ]
-                bars_html = ""
-                for cat_name, cat_val in cats:
-                    bar_color = "#16a34a" if cat_val >= 65 else "#d97706" if cat_val >= 45 else "#dc2626"
-                    bars_html += f"""
-                    <div style="margin-bottom:8px">
-                        <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#6b7280;margin-bottom:3px">
-                            <span>{cat_name}</span><span style="font-weight:600;color:{bar_color}">{cat_val:.0f}</span>
-                        </div>
-                        <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
-                            <div style="background:{bar_color};width:{cat_val}%;height:100%;border-radius:4px"></div>
-                        </div>
-                    </div>"""
-
-                return f"""
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;height:100%">
-                    <div style="text-align:center;margin-bottom:16px">
-                        <div style="font-size:2.8rem">{flag}</div>
-                        <div style="font-size:1.1rem;font-weight:700;color:#0f172a">{name}</div>
-                        <div style="font-size:0.75rem;color:#6b7280">Elo {elo:.0f} · טופס {factor:.2f}x</div>
-                    </div>
-
-                    <div style="text-align:center;font-size:2rem;font-weight:800;color:#1d4ed8;margin-bottom:4px">{score['total']:.0f}<span style="font-size:1rem;color:#94a3b8">/100</span></div>
-                    <div style="text-align:center;font-size:0.75rem;color:#6b7280;margin-bottom:16px">ציון כולל</div>
-
-                    <div style="margin-bottom:16px">{bars_html}</div>
-
-                    <div style="border-top:1px solid #f1f5f9;padding-top:12px">
-                        <div style="font-size:0.7rem;color:#6b7280;text-transform:uppercase;font-weight:700;margin-bottom:8px">5 משחקים אחרונים</div>
-                        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">{result_html}</div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
-                            <div style="background:#f8fafc;border-radius:8px;padding:8px">
-                                <div style="font-size:1.1rem;font-weight:700;color:#16a34a">{form.get('avg_scored',0):.1f}</div>
-                                <div style="font-size:0.65rem;color:#6b7280">שערים/מ'</div>
+                    # בארים
+                    cats = [("עוצמה (Elo)", score["elo"]), ("טופס", score["form"]), ("התקפה", score["attack"]), ("הגנה", score["defense"])]
+                    for cat_name, val in cats:
+                        color = "#16a34a" if val >= 65 else "#d97706" if val >= 45 else "#dc2626"
+                        st.markdown(f"""
+                        <div style="margin-bottom:10px">
+                            <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#374151;margin-bottom:4px;direction:rtl">
+                                <span style="font-weight:500">{cat_name}</span>
+                                <span style="font-weight:700;color:{color}">{val:.0f}</span>
                             </div>
-                            <div style="background:#f8fafc;border-radius:8px;padding:8px">
-                                <div style="font-size:1.1rem;font-weight:700;color:#dc2626">{form.get('avg_conceded',0):.1f}</div>
-                                <div style="font-size:0.65rem;color:#6b7280">קבלה/מ'</div>
+                            <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden">
+                                <div style="background:{color};width:{min(val,100)}%;height:100%;border-radius:4px"></div>
                             </div>
-                            <div style="background:#f8fafc;border-radius:8px;padding:8px">
-                                <div style="font-size:1.1rem;font-weight:700;color:#7c3aed">{form.get('clean_sheets',0)}</div>
-                                <div style="font-size:0.65rem;color:#6b7280">שערים נקיים</div>
-                            </div>
-                        </div>
-                        <div style="text-align:center;margin-top:10px;font-size:0.82rem;color:#4b5563">
-                            {trend_icon} מגמה: <b>{trend_label}</b>
-                            {f' · {form.get("win_streak")} ניצחונות ברצף' if form.get("win_streak",0) >= 2 else ''}
-                        </div>
-                    </div>
-                </div>"""
+                        </div>""", unsafe_allow_html=True)
 
-            with col_h:
-                st.markdown(render_team_card(home["name"], flag_h, elo_home, score_home, form_home, form_home_factor), unsafe_allow_html=True)
-            with col_a:
-                st.markdown(render_team_card(away["name"], flag_a, elo_away, score_away, form_away, form_away_factor), unsafe_allow_html=True)
+                    st.divider()
+
+                    # תוצאות אחרונות
+                    st.markdown('<div style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;margin-bottom:8px;direction:rtl">5 משחקים אחרונים</div>', unsafe_allow_html=True)
+                    results = form.get("results", [])
+                    result_colors = {"W": "#16a34a", "D": "#d97706", "L": "#dc2626"}
+                    result_labels = {"W": "נ", "D": "ת", "L": "ה"}
+                    badges = " ".join([
+                        f'<span style="background:{result_colors.get(r,"#94a3b8")};color:#fff;border-radius:5px;padding:4px 10px;font-size:0.8rem;font-weight:700">{result_labels.get(r,"?")}</span>'
+                        for r in results
+                    ])
+                    st.markdown(f'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">{badges}</div>', unsafe_allow_html=True)
+
+                    # סטטיסטיקות
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.markdown(f'<div style="text-align:center;background:#f0fdf4;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:700;color:#16a34a">{form.get("avg_scored",0):.1f}</div><div style="font-size:0.62rem;color:#6b7280">שערים/מ׳</div></div>', unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(f'<div style="text-align:center;background:#fef2f2;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:700;color:#dc2626">{form.get("avg_conceded",0):.1f}</div><div style="font-size:0.62rem;color:#6b7280">קבלה/מ׳</div></div>', unsafe_allow_html=True)
+                    with c3:
+                        st.markdown(f'<div style="text-align:center;background:#f5f3ff;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:700;color:#7c3aed">{form.get("clean_sheets",0)}</div><div style="font-size:0.62rem;color:#6b7280">שערים נקיים</div></div>', unsafe_allow_html=True)
+
+                    # מגמה
+                    trend_map = {"rising": ("📈", "עלייה", "#16a34a"), "falling": ("📉", "ירידה", "#dc2626"), "stable": ("➡️", "יציב", "#6b7280"), "unknown": ("❓", "?", "#6b7280")}
+                    t_icon, t_label, t_color = trend_map.get(form.get("trend","unknown"), ("❓","?","#6b7280"))
+                    streak_text = f" · {form.get('win_streak')} ניצחונות ברצף 🔥" if form.get("win_streak",0) >= 2 else ""
+                    st.markdown(f'<div style="text-align:center;margin-top:10px;font-size:0.82rem;color:{t_color};font-weight:600">{t_icon} מגמה: {t_label}{streak_text}</div>', unsafe_allow_html=True)
+
+            render_team_panel(col_h, home["name"], flag_url_h, elo_home, score_home, form_home, form_home_factor)
+            render_team_panel(col_a, away["name"], flag_url_a, elo_away, score_away, form_away, form_away_factor)
 
             # ══════════════════════════════════════════════════════
             # SECTION 4 — הסתברויות ותוצאות

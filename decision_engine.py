@@ -7,40 +7,50 @@ import math
 from api_client import get_team_last_matches
 
 
-# ─── דגלי מדינות (Emoji) ────────────────────────────────────────────────────────
-FLAG_MAP = {
-    "argentina": "🇦🇷", "australia": "🇦🇺", "austria": "🇦🇹",
-    "belgium": "🇧🇪", "bolivia": "🇧🇴", "bosnia": "🇧🇦", "brazil": "🇧🇷",
-    "cameroon": "🇨🇲", "canada": "🇨🇦", "cape verde": "🇨🇻", "chile": "🇨🇱",
-    "colombia": "🇨🇴", "congo": "🇨🇩", "costa rica": "🇨🇷", "croatia": "🇭🇷",
-    "czechia": "🇨🇿", "czech republic": "🇨🇿", "denmark": "🇩🇰",
-    "ecuador": "🇪🇨", "egypt": "🇪🇬", "england": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-    "france": "🇫🇷", "germany": "🇩🇪", "ghana": "🇬🇭",
-    "haiti": "🇭🇹", "honduras": "🇭🇳", "hungary": "🇭🇺",
-    "iran": "🇮🇷", "iraq": "🇮🇶", "ivory coast": "🇨🇮",
-    "jamaica": "🇯🇲", "japan": "🇯🇵", "jordan": "🇯🇴",
-    "mexico": "🇲🇽", "morocco": "🇲🇦",
-    "netherlands": "🇳🇱", "new zealand": "🇳🇿", "nigeria": "🇳🇬", "norway": "🇳🇴",
-    "panama": "🇵🇦", "paraguay": "🇵🇾", "peru": "🇵🇪", "poland": "🇵🇱",
-    "portugal": "🇵🇹",
-    "qatar": "🇶🇦",
-    "saudi arabia": "🇸🇦", "scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "senegal": "🇸🇳",
-    "serbia": "🇷🇸", "south africa": "🇿🇦", "south korea": "🇰🇷",
-    "spain": "🇪🇸", "sweden": "🇸🇪", "switzerland": "🇨🇭",
-    "tunisia": "🇹🇳", "turkey": "🇹🇷", "türkiye": "🇹🇷",
-    "ukraine": "🇺🇦", "uruguay": "🇺🇾", "usa": "🇺🇸",
-    "uzbekistan": "🇺🇿",
-    "venezuela": "🇻🇪",
-    "wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
-    "curaçao": "🇨🇼", "el salvador": "🇸🇻", "algeria": "🇩🇿",
+# ─── קודי מדינות ISO לדגלים ────────────────────────────────────────────────────
+COUNTRY_CODE_MAP = {
+    "argentina": "ar", "australia": "au", "austria": "at",
+    "belgium": "be", "bolivia": "bo", "bosnia": "ba", "brazil": "br",
+    "cameroon": "cm", "canada": "ca", "cape verde": "cv", "cape verde islands": "cv",
+    "chile": "cl", "colombia": "co", "congo": "cd", "congo dr": "cd",
+    "costa rica": "cr", "croatia": "hr",
+    "czechia": "cz", "czech republic": "cz", "denmark": "dk",
+    "ecuador": "ec", "egypt": "eg", "england": "gb-eng",
+    "france": "fr", "germany": "de", "ghana": "gh",
+    "haiti": "ht", "honduras": "hn", "hungary": "hu",
+    "iran": "ir", "iraq": "iq", "ivory coast": "ci",
+    "jamaica": "jm", "japan": "jp", "jordan": "jo",
+    "mexico": "mx", "morocco": "ma",
+    "netherlands": "nl", "new zealand": "nz", "nigeria": "ng", "norway": "no",
+    "panama": "pa", "paraguay": "py", "peru": "pe", "poland": "pl",
+    "portugal": "pt", "qatar": "qa",
+    "saudi arabia": "sa", "scotland": "gb-sct", "senegal": "sn",
+    "serbia": "rs", "south africa": "za", "south korea": "kr",
+    "spain": "es", "sweden": "se", "switzerland": "ch",
+    "tunisia": "tn", "turkey": "tr", "türkiye": "tr",
+    "ukraine": "ua", "uruguay": "uy", "usa": "us",
+    "uzbekistan": "uz", "venezuela": "ve", "wales": "gb-wls",
+    "curaçao": "cw", "el salvador": "sv", "algeria": "dz",
+    "austria": "at", "norway": "no", "bosnia & herzegovina": "ba",
+    "korea republic": "kr", "united states": "us",
 }
 
-def get_flag(team_name: str) -> str:
-    name = team_name.lower()
-    for key, flag in FLAG_MAP.items():
+def get_flag_url(team_name: str) -> str:
+    """מחזיר URL לתמונת דגל מ-flagcdn.com"""
+    name = team_name.lower().strip()
+    # חיפוש מדויק
+    if name in COUNTRY_CODE_MAP:
+        code = COUNTRY_CODE_MAP[name]
+        return f"https://flagcdn.com/w80/{code}.png"
+    # חיפוש חלקי
+    for key, code in COUNTRY_CODE_MAP.items():
         if key in name or name in key:
-            return flag
-    return "🏳️"
+            return f"https://flagcdn.com/w80/{code}.png"
+    return ""
+
+def get_flag(team_name: str) -> str:
+    """Fallback — emoji אם אין URL"""
+    return ""
 
 
 # ─── ניתוח 5 משחקים אחרונים ────────────────────────────────────────────────────
