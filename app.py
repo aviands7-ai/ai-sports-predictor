@@ -76,14 +76,19 @@ with tab1:
     selected_date = st.date_input("תאריך משחקים", pd.to_datetime("2022-12-09"))
     
     @st.cache_data(ttl=3600)
-    def fetch_fixtures_for_date(date_str):
+    def fetch_all_fixtures():
+        # מושך את כל הטורניר בבת אחת ושומר בזיכרון!
         url = "https://v3.football.api-sports.io/fixtures"
         headers = {"x-apisports-key": SPORTS_API_KEY}
-        params = {"league": "1", "season": "2022", "date": date_str}
+        params = {"league": "1", "season": "2022", "from": "2022-11-20", "to": "2022-12-18"}
         res = requests.get(url, headers=headers, params=params).json()
         return res.get("response", [])
 
-    fixtures = fetch_fixtures_for_date(selected_date.strftime("%Y-%m-%d"))
+    all_fixtures = fetch_all_fixtures()
+    
+    # סינון מקומי לפי התאריך שבחרת בדשבורד
+    selected_date_str = selected_date.strftime("%Y-%m-%d")
+    fixtures = [f for f in all_fixtures if f["fixture"]["date"].startswith(selected_date_str)]
     
     if not fixtures:
         st.warning("לא נמצאו משחקי מונדיאל בתאריך זה.")
