@@ -563,7 +563,7 @@ with tab_intel:
                 st.markdown(f'<div class="intel-box"><div class="intel-title">פצועים — {home["name"]}</div>{inj_home_html}</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="intel-box"><div class="intel-title">פצועים — {away["name"]}</div>{inj_away_html}</div>', unsafe_allow_html=True)
 
-                # H2H
+                # H2H — בתוך expander כדי לא לתפוס מקום
                 if h2h:
                     h2h_records = []
                     for g in h2h[-5:]:
@@ -575,8 +575,8 @@ with tab_intel:
                             "תוצאה": f"{gh}-{ga}",
                             "אורחת": g["teams"]["away"]["name"],
                         })
-                    st.markdown(f'<div class="intel-title" style="margin-top:12px">עימותים ישירים (5 אחרונים)</div>', unsafe_allow_html=True)
-                    st.dataframe(pd.DataFrame(h2h_records), use_container_width=True, hide_index=True)
+                    with st.expander(f"⚔️ עימותים ישירים ({len(h2h_records)} אחרונים)"):
+                        st.dataframe(pd.DataFrame(h2h_records), use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════
