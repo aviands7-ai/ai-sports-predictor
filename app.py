@@ -66,12 +66,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─── טאבים ─────────────────────────────────────────────────────────────────────
-tab_intel, tab_value, tab_rankings, tab_backtest, tab_glossary = st.tabs([
+tab_intel, tab_value, tab_rankings, tab_backtest, tab_glossary, tab_paper = st.tabs([
     "🔭 ניתוח משחק",
     "💰 Value Bets",
     "📊 דירוג קבוצות",
     "🧪 Backtest",
     "📖 מילון מושגים",
+    "📒 תיק וירטואלי",
 ])
 
 
@@ -940,3 +941,258 @@ with tab_glossary:
   <div style="font-size:13px;color:#374151;margin-bottom:8px">{desc}</div>
   <div style="font-size:12px;color:#6b7280;background:white;border-radius:6px;padding:8px 12px">📌 {ex}</div>
 </div>""", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════
+# TAB 6 — תיק וירטואלי (Paper Trading)
+# ══════════════════════════════════════════════════════
+with tab_paper:
+    INITIAL_BANKROLL = 300.0
+
+    st.markdown("### 📒 תיק וירטואלי — Paper Trading")
+    st.caption(f"תקציב התחלתי: ₪{INITIAL_BANKROLL:.0f} · המערכת שומרת את כל הנתונים אוטומטית")
+
+    # ── טעינת עסקאות שמורות ─────────────────────────────
+    def load_trades() -> list[dict]:
+        try:
+            import json
+            from supabase import create_client
+            db = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+            res = db.table("paper_trades").select("*").order("created_at").execute()
+            return res.data or []
+        except Exception:
+            return st.session_state.get("paper_trades", [])
+
+    def save_trade(trade: dict):
+        try:
+            from supabase import create_client
+            db = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+            db.table("paper_trades").upsert(trade).execute()
+        except Exception:
+            trades = st.session_state.get("paper_trades", [])
+            existing = next((i for i,t in enumerate(trades) if t["id"] == trade["id"]), None)
+            if existing is not None:
+                trades[existing] = trade
+            else:
+                trades.append(trade)
+            st.session_state["paper_trades"] = trades
+
+    def delete_trade(trade_id: str):
+        try:
+            from supabase import create_client
+            db = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+            db.table("paper_trades").delete().eq("id", trade_id).execute()
+        except Exception:
+            trades = st.session_state.get("paper_trades", [])
+            st.session_state["paper_trades"] = [t for t in trades if t["id"] != trade_id]
+
+    trades = load_trades()
+
+    # ── חישוב KPI ───────────────────────────────────────
+    closed = [t for t in trades if t.get("status") in ("זכה","הפסיד")]
+    pending = [t for t in trades if t.get("status") == "ממתין"]
+
+    current_bankroll = INITIAL_BANKROLL
+    for t in trades:
+        if t.get("status") == "זכה":
+            current_bankroll += float(t.get("stake", 0)) * (float(t.get("exec_odds", 1)) - 1)
+        elif t.get("status") == "הפסיד":
+            current_bankroll -= float(t.get("stake", 0))
+
+    roi = (current_bankroll - INITIAL_BANKROLL) / INITIAL_BANKROLL * 100
+    wins = sum(1 for t in closed if t.get("status") == "זכה")
+    win_rate = wins / len(closed) * 100 if closed else 0
+
+    # ── KPI Cards ────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("תקציב התחלתי", f"₪{INITIAL_BANKROLL:.0f}")
+    k2.metric("תקציב נוכחי", f"₪{current_bankroll:.1f}",
+              delta=f"{current_bankroll - INITIAL_BANKROLL:+.1f}")
+    roi_color = "normal" if roi >= 0 else "inverse"
+    k3.metric("ROI", f"{roi:+.1f}%")
+    k4.metric("סה״כ הימורים", len(trades))
+    k5.metric("Win Rate", f"{win_rate:.0f}%", delta=f"{wins}/{len(closed)}")
+
+    st.divider()
+
+    # ── הוספת עסקה חדשה ─────────────────────────────────
+    st.markdown("#### ➕ הוסף עסקה")
+
+    # משיכה מ-Value Bets
+    vb_data = st.session_state.get("last_value_bets", [])
+
+    col_src = st.columns([3, 1])
+    with col_src[0]:
+        if vb_data:
+            vb_options = {f"{v['משחק']} → {v['הימור על']} (Kelly {v['Kelly %']}, Odds {v['Odds']})": v
+                          for v in vb_data}
+            selected_vb = st.selectbox("משוך מ-Value Bets", ["— הזן ידנית —"] + list(vb_options.keys()),
+                                       key="pt_vb_select")
+        else:
+            selected_vb = "— הזן ידנית —"
+            st.info("הפעל סריקת Value Bets כדי למשוך נתונים אוטומטית")
+
+    # שדות טופס
+    c1, c2, c3 = st.columns(3)
+    c4, c5, c6 = st.columns(3)
+
+    # ערכי ברירת מחדל ממשיכה
+    if selected_vb != "— הזן ידנית —" and vb_data:
+        vb = vb_options[selected_vb]
+        default_match  = vb.get("משחק","")
+        default_bet    = vb.get("הימור על","")
+        default_date   = vb.get("תאריך","")
+        default_kelly  = float(str(vb.get("Kelly %","0")).replace("%",""))
+        default_odds   = float(vb.get("Odds", 2.0))
+    else:
+        default_match  = ""
+        default_bet    = ""
+        default_date   = str(pd.Timestamp.now().date())
+        default_kelly  = 1.0
+        default_odds   = 2.0
+
+    with c1:
+        pt_date  = st.text_input("תאריך", value=default_date, key="pt_date")
+    with c2:
+        pt_match = st.text_input("משחק", value=default_match, key="pt_match")
+    with c3:
+        pt_bet   = st.text_input("הימור על", value=default_bet, key="pt_bet")
+
+    with c4:
+        pt_kelly = st.number_input("Kelly %", value=default_kelly, min_value=0.0, max_value=5.0,
+                                   step=0.1, format="%.1f", key="pt_kelly")
+    with c5:
+        # Stake = Kelly% מהתקציב הנוכחי
+        suggested_stake = round(current_bankroll * pt_kelly / 100, 1)
+        pt_stake = st.number_input("סכום השקעה (₪)", value=suggested_stake,
+                                   min_value=0.0, step=1.0, format="%.1f", key="pt_stake")
+    with c6:
+        pt_odds = st.number_input("יחס לביצוע (Executed Odds)", value=default_odds,
+                                  min_value=1.01, max_value=100.0, step=0.05, format="%.2f",
+                                  key="pt_odds")
+
+    if st.button("➕ הוסף להימורים", type="primary", key="pt_add"):
+        if pt_match and pt_bet and pt_stake > 0:
+            import uuid
+            new_trade = {
+                "id":         str(uuid.uuid4()),
+                "date":       pt_date,
+                "match":      pt_match,
+                "bet":        pt_bet,
+                "kelly_pct":  pt_kelly,
+                "stake":      pt_stake,
+                "exec_odds":  pt_odds,
+                "status":     "ממתין",
+                "created_at": str(pd.Timestamp.now()),
+            }
+            save_trade(new_trade)
+            st.success(f"✅ נוסף: {pt_match} → {pt_bet} · ₪{pt_stake}")
+            st.rerun()
+        else:
+            st.error("מלא: משחק, הימור, וסכום")
+
+    st.divider()
+
+    # ── טבלת עסקאות ─────────────────────────────────────
+    st.markdown("#### 📋 יומן עסקאות")
+
+    if not trades:
+        st.info("אין עסקאות עדיין. הוסף הימור למעלה.")
+    else:
+        # חישוב Bankroll After לכל שורה
+        running = INITIAL_BANKROLL
+        rows_display = []
+        for t in trades:
+            stake     = float(t.get("stake", 0))
+            exec_odds = float(t.get("exec_odds", 1))
+            status    = t.get("status", "ממתין")
+
+            if status == "זכה":
+                pnl = round(stake * (exec_odds - 1), 2)
+            elif status == "הפסיד":
+                pnl = -round(stake, 2)
+            else:
+                pnl = 0.0
+
+            running = round(running + pnl, 2)
+
+            rows_display.append({
+                "_id":            t["id"],
+                "תאריך":          t.get("date",""),
+                "משחק":           t.get("match",""),
+                "הימור על":       t.get("bet",""),
+                "Kelly %":        f"{t.get('kelly_pct',0):.1f}%",
+                "סכום (₪)":       f"₪{stake:.1f}",
+                "Odds בוצע":      f"{exec_odds:.2f}",
+                "סטטוס":          status,
+                "P&L":            f"{pnl:+.1f}" if pnl != 0 else "—",
+                "Bankroll":       f"₪{running:.1f}",
+            })
+
+        # תצוגת הטבלה עם כפתורי עריכה
+        header = st.columns([1.5, 2.5, 1.5, 0.8, 0.8, 0.8, 1.2, 0.8, 1, 0.5])
+        headers = ["תאריך","משחק","הימור","Kelly","סכום","Odds","סטטוס","P&L","Bankroll","🗑"]
+        for col, h in zip(header, headers):
+            col.markdown(f"**{h}**")
+
+        for row in rows_display:
+            tid = row["_id"]
+            trade_obj = next(t for t in trades if t["id"] == tid)
+
+            cols = st.columns([1.5, 2.5, 1.5, 0.8, 0.8, 0.8, 1.2, 0.8, 1, 0.5])
+            cols[0].write(row["תאריך"])
+            cols[1].write(row["משחק"])
+            cols[2].write(row["הימור על"])
+            cols[3].write(row["Kelly %"])
+            cols[4].write(row["סכום (₪)"])
+
+            # Odds — עריכה ידנית רק אם ממתין
+            if trade_obj["status"] == "ממתין":
+                new_odds = cols[5].number_input("",
+                    value=float(trade_obj.get("exec_odds", 2.0)),
+                    min_value=1.01, max_value=100.0, step=0.05,
+                    format="%.2f", key=f"odds_{tid}", label_visibility="collapsed")
+                if new_odds != float(trade_obj.get("exec_odds", 2.0)):
+                    trade_obj["exec_odds"] = new_odds
+                    save_trade(trade_obj)
+                    st.rerun()
+            else:
+                cols[5].write(row["Odds בוצע"])
+
+            # סטטוס — תפריט נפתח
+            status_options = ["ממתין", "זכה", "הפסיד"]
+            current_idx = status_options.index(trade_obj["status"])
+            new_status = cols[6].selectbox("",
+                options=status_options, index=current_idx,
+                key=f"status_{tid}", label_visibility="collapsed")
+            if new_status != trade_obj["status"]:
+                trade_obj["status"] = new_status
+                save_trade(trade_obj)
+                st.rerun()
+
+            # P&L
+            pnl_val = float(row["P&L"].replace("—","0").replace("+",""))
+            if row["P&L"] != "—":
+                color = "green" if pnl_val > 0 else "red"
+                cols[7].markdown(f":{color}[{row['P&L']}]")
+            else:
+                cols[7].write("—")
+
+            cols[8].write(row["Bankroll"])
+
+            # מחיקה
+            if cols[9].button("🗑", key=f"del_{tid}"):
+                delete_trade(tid)
+                st.rerun()
+
+        st.divider()
+
+        # ── גרף תקציב ────────────────────────────────────
+        closed_rows = [r for r in rows_display if r["סטטוס"] != "ממתין"]
+        if len(closed_rows) >= 2:
+            st.markdown("#### 📈 התפתחות התקציב")
+            bankroll_history = [INITIAL_BANKROLL] + [
+                float(r["Bankroll"].replace("₪","")) for r in rows_display
+                if r["סטטוס"] != "ממתין"
+            ]
+            st.line_chart(bankroll_history)
