@@ -25,7 +25,7 @@ def _auto_calibrate_rho(verbose: bool = True) -> float:
     if verbose:
         print(f"🔧 כיול Dixon-Coles rho: {result['message']}")
 
-    _CURRENT_RHO = result["recommended_rho"]
+    _CURRENT_RHO = result.get("recommended_rho", DEFAULT_RHO)
     return _CURRENT_RHO
 
 
