@@ -1065,38 +1065,45 @@ with tab_paper:
     auto_odds  = st.session_state.get("pt_auto_odds",  2.0)
     from_vb    = selected_vb != "— הזן ידנית —"
 
+    # key דינמי לפי הבחירה — מאלץ Streamlit ליצור widget חדש עם ערך חדש
+    sel_key = selected_vb.replace(" ","_").replace("→","_").replace("/","_")[:30]
+
     # שדות
     f1, f2, f3 = st.columns(3)
     with f1:
         pt_date  = st.text_input("תאריך", value=auto_date,
-                                  disabled=from_vb, key="pt_f_date")
+                                  disabled=from_vb,
+                                  key=f"pt_f_date_{sel_key}")
     with f2:
         pt_match = st.text_input("משחק", value=auto_match,
-                                  disabled=from_vb, key="pt_f_match")
+                                  disabled=from_vb,
+                                  key=f"pt_f_match_{sel_key}")
     with f3:
         pt_bet   = st.text_input("הימור על", value=auto_bet,
-                                  disabled=from_vb, key="pt_f_bet")
+                                  disabled=from_vb,
+                                  key=f"pt_f_bet_{sel_key}")
 
     f4, f5, f6 = st.columns(3)
     with f4:
         pt_kelly = st.number_input(
-            "Kelly %", value=auto_kelly,
+            "Kelly %", value=float(auto_kelly),
             min_value=0.0, max_value=5.0, step=0.1,
-            format="%.1f", disabled=from_vb, key="pt_f_kelly",
+            format="%.1f", disabled=from_vb,
+            key=f"pt_f_kelly_{sel_key}",
         )
     with f5:
-        # Stake — ברירת מחדל 20₪ (לא תלוי ב-Kelly)
         pt_stake = st.number_input(
             "סכום השקעה (₪)", value=20.0,
-            min_value=1.0, step=1.0, format="%.1f", key="pt_f_stake",
+            min_value=1.0, step=1.0, format="%.1f",
+            key=f"pt_f_stake_{sel_key}",
         )
     with f6:
-        # Executed Odds — תמיד פתוח לעריכה
         pt_odds = st.number_input(
             "יחס לביצוע (Executed Odds)",
-            value=auto_odds,
+            value=float(auto_odds),
             min_value=1.01, max_value=200.0,
-            step=0.05, format="%.2f", key="pt_f_odds",
+            step=0.05, format="%.2f",
+            key=f"pt_f_odds_{sel_key}",
             help="הזן את היחס האמיתי מאתר ההימורים. ⚠️ P&L יחושב לפי ערך זה בלבד.",
         )
 
