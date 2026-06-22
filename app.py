@@ -1030,10 +1030,12 @@ with tab_paper:
     # שמירת הבחירה הקודמת לזיהוי שינוי
     prev_sel = st.session_state.get("pt_prev_sel", "— הזן ידנית —")
 
+    reset_counter = st.session_state.get("pt_reset_counter", 0)
+
     selected_vb = st.selectbox(
         "משוך מ-Value Bets" if vb_data else "אין Value Bets — הפעל סריקה",
         vb_labels,
-        key="pt_vb_select",
+        key=f"pt_vb_select_{reset_counter}",
         disabled=not bool(vb_data),
     )
 
@@ -1113,16 +1115,18 @@ with tab_paper:
                 "bet":        bet_val,
                 "kelly_pct":  float(pt_kelly),
                 "stake":      float(pt_stake),
-                "exec_odds":  float(pt_odds),   # נעול בעת שמירה
+                "exec_odds":  float(pt_odds),
                 "status":     "ממתין",
                 "created_at": str(pd.Timestamp.now()),
             }
             save_trade(new_trade)
-            # נקה את ה-state של הטופס
+            # נקה את ה-state של הטופס — בלי לגעת ב-widget key
             for k in ["pt_prev_sel","pt_auto_date","pt_auto_match",
                       "pt_auto_bet","pt_auto_kelly","pt_auto_odds"]:
                 st.session_state.pop(k, None)
-            st.session_state["pt_vb_select"] = "— הזן ידנית —"
+            # איפוס הselectbox דרך counter נפרד
+            st.session_state["pt_reset_counter"] = \
+                st.session_state.get("pt_reset_counter", 0) + 1
             st.success(f"✅ נוסף: {match_val} → {bet_val} · Odds {pt_odds} · ₪{pt_stake}")
             st.rerun()
         else:
