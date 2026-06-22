@@ -1,22 +1,30 @@
 """
 scheduler.py — מפעיל את ה-Pipeline פעם אחת ויוצא.
-מריץ את main.py ישירות (לא כ-subprocess) כדי שכל שגיאה תופיע ב-logs.
 """
 
 import sys
+import traceback
 from datetime import datetime
 
-print(f"\n{'='*50}")
-print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} — מריץ pipeline...")
+# force flush כדי שכל הדפסה תופיע מיד ב-logs
+import os
+os.environ["PYTHONUNBUFFERED"] = "1"
+
+print(f"{'='*50}", flush=True)
+print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} — מתחיל...", flush=True)
 
 try:
+    print("📦 טוען main...", flush=True)
     from main import run_pipeline
+    print("✅ main נטען", flush=True)
+
+    print("🚀 מריץ pipeline...", flush=True)
     run_pipeline(verbose=True)
-    print("✅ הסריקה הושלמה. הסקריפט סיים את ריצתו ומשחרר משאבים.")
+
+    print("✅ הסריקה הושלמה. הסקריפט סיים את ריצתו ומשחרר משאבים.", flush=True)
     sys.exit(0)
 
 except Exception as e:
-    import traceback
-    print(f"❌ שגיאה קריטית:")
+    print(f"❌ שגיאה קריטית: {e}", flush=True)
     traceback.print_exc()
     sys.exit(1)
