@@ -234,8 +234,24 @@ def _process_match(match: dict, verbose: bool, rho: float = DEFAULT_RHO):
     log_prediction(fixture_id, pred)
 
 
+import time
+
 if __name__ == "__main__":
-    run_pipeline(verbose=True)
+    print("🤖 בוט המסחר הופעל! מתחיל סריקה מחזורית...")
+    
+    while True:
+        try:
+            run_pipeline(verbose=True)
+        except Exception as e:
+            print(f"❌ שגיאה במהלך הריצה: {e}")
+        
+        # הגדרת זמן המתנה (מונע חסימה מה-API)
+        # מומלץ להריץ כל 3 שעות במהלך המונדיאל
+        wait_hours = 3
+        wait_seconds = wait_hours * 3600
+        
+        print(f"⏳ סריקה הושלמה בהצלחה. הבוט נכנס להמתנה של {wait_hours} שעות...\n")
+        time.sleep(wait_seconds)
 
 
 
