@@ -1018,11 +1018,13 @@ with tab_paper:
 
     vb_data = st.session_state.get("last_value_bets", [])
 
-    # בניית מילון Value Bets
+    # מיון כרונולוגי + תאריך בתווית
     vb_map = {}
     if vb_data:
-        for v in vb_data:
-            label = f"{v.get('משחק','')} → {v.get('הימור על','')} (Kelly {v.get('Kelly %','')}, Odds {v.get('Odds','')})"
+        sorted_vb = sorted(vb_data, key=lambda v: str(v.get("תאריך", "")))
+        for v in sorted_vb:
+            date_str = str(v.get("תאריך", ""))[:10]
+            label = f"[{date_str}] {v.get('משחק','')} → {v.get('הימור על','')} (Kelly {v.get('Kelly %','')}, Odds {v.get('Odds','')})"
             vb_map[label] = v
 
     vb_labels = ["— הזן ידנית —"] + list(vb_map.keys())
