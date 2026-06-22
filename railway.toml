@@ -3,4 +3,3 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "python scheduler.py"
-restartPolicyType = "never"
