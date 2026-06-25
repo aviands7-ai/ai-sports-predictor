@@ -168,14 +168,30 @@ def _get_events() -> list:
     sports     = get_all_available_sports()
     all_events = {}
 
+    # fallback אם get_all_available_sports החזיר ריק
+    if not sports:
+        print("[OddsAPI] ⚠️ רשימת ספורט ריקה — משתמש ב-fallback", flush=True)
+        sports = [
+            {"key": "soccer_fifa_world_cup",    "has_draw": True},
+            {"key": "soccer_international",      "has_draw": True},
+            {"key": "soccer_usa_mls",            "has_draw": True},
+            {"key": "soccer_epl",                "has_draw": True},
+            {"key": "tennis_atp",                "has_draw": False},
+            {"key": "baseball_mlb",              "has_draw": False},
+            {"key": "basketball_nba",            "has_draw": False},
+        ]
+
     for sport_info in sports:
         if _ODDS_BLOCKED:
             print("[OddsAPI] ⛔ חסום — עוצר איסוף events", flush=True)
             break
 
-        sport_key = sport_info["key"]
-        has_draw  = sport_info["has_draw"]
-        ck        = f"events_{sport_key}"
+        sport_key = sport_info.get("key", "")
+        has_draw  = sport_info.get("has_draw", True)
+        if not sport_key:
+            continue
+
+        ck = f"events_{sport_key}"
 
         # EU/UK — Decimal
         data = _get(f"sports/{sport_key}/odds", {
