@@ -152,6 +152,80 @@ def get_starting_elo(team_name: str) -> float:
     return 1400.0
 
 
+# ─── Elo Confidence Discount ────────────────────────────────────────────────────
+
+# Elo שברירת מחדל — קבוצות שטרם שיחקו ואין להן דירוג ידוע
+ELO_DEFAULT     = 1400.0
+ELO_CONVERGENCE_GAMES = 10   # לאחר כמה משחקים Elo נחשב מכוייל
+
+def elo_confidence_weight(elo: float, games_played: int = 0) -> float:
+    """
+    מחשב משקל ביטחון ל-Elo של קבוצה.
+
+    קבוצה שטרם שיחקה (games_played=0) עם Elo ברירת מחדל (1400):
+      → weight = 0.0  (אין ביטחון — shrink מלא לכיוון prior)
+    קבוצה עם 10+ משחקים:
+      → weight = 1.0  (ביטחון מלא — ללא shrinkage)
+    בין לבין — ליניארי.
+
+    אם games_played לא ידוע (−1) → משתמש ב-Elo distance מ-1400 כ-proxy:
+      ±50 נקודות מ-1400 = ~5 משחקים בהערכה גסה.
+    """
+    if games_played >= ELO_CONVERGENCE_GAMES:
+        return 1.0
+    if games_played > 0:
+        return min(1.0, games_played / ELO_CONVERGENCE_GAMES)
+    # proxy לפי מרחק מ-default — קבוצה ב-1400 = 0 ביטחון
+    elo_delta = abs(elo - ELO_DEFAULT)
+    # כל 20 נקודות מרחק = ~1 משחק בהערכה
+    proxy_games = min(ELO_CONVERGENCE_GAMES, elo_delta / 20.0)
+    return min(1.0, proxy_games / ELO_CONVERGENCE_GAMES)
+
+
+def shrink_probability(p: float, n_outcomes: int, confidence: float) -> float:
+    """
+    Shrinkage של הסתברות לכיוון prior אחיד.
+    confidence=1.0 → ללא שינוי (Elo מכויל)
+    confidence=0.0 → prior אחיד (1/n_outcomes)
+    """
+    prior = 1.0 / n_outcomes
+    return confidence * p + (1.0 - confidence) * prior
+
+
+def apply_elo_confidence(probs: dict, elo_home: float, elo_away: float,
+                          games_home: int = -1, games_away: int = -1) -> dict:
+    """
+    מחיל Elo Confidence Discount על מילון הסתברויות.
+    משמש ב-full_match_analysis לפני חישוב EV/Kelly.
+
+    מחזיר מילון הסתברויות מוקטנות (מנורמלות).
+    """
+    conf_h   = elo_confidence_weight(elo_home, games_home)
+    conf_a   = elo_confidence_weight(elo_away, games_away)
+    # ביטחון מינימלי בין שתי הקבוצות — השפעה סימטרית
+    combined = (conf_h + conf_a) / 2.0
+
+    has_draw   = "draw" in probs and probs.get("draw", 0) > 0
+    n_outcomes = 3 if has_draw else 2
+
+    result = {}
+    for k, v in probs.items():
+        if k in ("home", "draw", "away"):
+            result[k] = shrink_probability(v, n_outcomes, combined)
+        else:
+            result[k] = v
+
+    # נרמול
+    total = result.get("home", 0) + result.get("away", 0) + result.get("draw", 0)
+    if total > 0:
+        for k in ("home", "draw", "away"):
+            if k in result:
+                result[k] = round(result[k] / total, 4)
+
+    result["_elo_confidence"] = round(combined, 3)
+    return result
+
+
 # ─── Dynamic K Factor ───────────────────────────────────────────────────────────
 
 def dynamic_k(round_name: str = "") -> float:
@@ -445,12 +519,18 @@ def full_match_analysis(elo_home: float, elo_away: float,
                         pure_probs: dict | None = None,
                         odds_updated_at: str | None = None,
                         rho: float = -0.13,
-                        has_draw: bool = True) -> dict:
+                        has_draw: bool = True,
+                        games_home: int = -1,
+                        games_away: int = -1) -> dict:
     """
     ניתוח מלא לכל ענפי הספורט.
 
     has_draw=True  → כדורגל: Dixon-Coles Bivariate Poisson (3-way)
     has_draw=False → ספורט ללא תיקו: נוסחה לוגיסטית (2-way)
+
+    games_home / games_away: מספר משחקים שמופיעים ב-Elo history.
+    -1 = לא ידוע → משתמש ב-Elo distance כ-proxy.
+    מוחל Elo Confidence Discount — מונע EV מנופח לקבוצות שטרם התכנסו.
     """
     if has_draw:
         # ── כדורגל — Dixon-Coles ────────────────────────────────────────────
@@ -461,7 +541,15 @@ def full_match_analysis(elo_home: float, elo_away: float,
             rho=rho,
         )
         outcomes = ["home", "draw", "away"]
-        ev_probs = pure_probs if pure_probs else probs
+
+        # ── Elo Confidence Discount ─────────────────────────────────────────
+        # EV ו-Kelly מחושבים על הסתברויות אחרי shrinkage (ev_probs).
+        # הצגה בממשק (our_prob) נשארת ללא שינוי — ציון שקוף למשתמש.
+        raw_ev_probs = pure_probs if pure_probs else probs
+        ev_probs     = apply_elo_confidence(
+            raw_ev_probs, elo_home, elo_away, games_home, games_away
+        )
+        elo_confidence = ev_probs.get("_elo_confidence", 1.0)
 
         results = {}
         for outcome in outcomes:
@@ -485,12 +573,19 @@ def full_match_analysis(elo_home: float, elo_away: float,
         results["xg_away"]        = probs["xg_away"]
         results["top_scores"]     = most_likely_scores(probs["score_matrix"])
         results["has_draw"]       = True
+        results["elo_confidence"] = round(elo_confidence, 3)
 
     else:
         # ── ספורט 2-way — לוגיסטי ──────────────────────────────────────────
         probs    = match_probabilities_2way(elo_home, elo_away, form_home, form_away)
         outcomes = ["home", "away"]
-        ev_probs = pure_probs if pure_probs else probs
+
+        # ── Elo Confidence Discount ─────────────────────────────────────────
+        raw_ev_probs = pure_probs if pure_probs else probs
+        ev_probs     = apply_elo_confidence(
+            raw_ev_probs, elo_home, elo_away, games_home, games_away
+        )
+        elo_confidence = ev_probs.get("_elo_confidence", 1.0)
 
         results = {}
         for outcome in outcomes:
@@ -514,11 +609,12 @@ def full_match_analysis(elo_home: float, elo_away: float,
             "odds": 0, "implied_prob": 0.0, "fair_odds": 0.0,
             "ev": 0.0, "kelly_pct": 0.0, "is_value": False,
         }
-        results["overround"] = overround(odds.get("home",1), 0, odds.get("away",1))
-        results["xg_home"]   = None
-        results["xg_away"]   = None
-        results["top_scores"]= []
-        results["has_draw"]  = False
+        results["overround"]     = overround(odds.get("home",1), 0, odds.get("away",1))
+        results["xg_home"]       = None
+        results["xg_away"]       = None
+        results["top_scores"]    = []
+        results["has_draw"]      = False
+        results["elo_confidence"]= round(elo_confidence, 3)
 
     results["form_home"]      = round(form_home, 3)
     results["form_away"]      = round(form_away, 3)
