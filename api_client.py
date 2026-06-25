@@ -21,6 +21,46 @@ WC_SEASON    = 2026
 WC_FROM      = "2026-06-11"
 WC_TO        = "2026-07-19"
 
+# ── Whitelist ליגות רלוונטיות לשלב 3 ─────────────────────────────────────────
+# רק ליגות שמוצגות ב-Odds API מרכזיים ורלוונטיות לניתוח Value Betting.
+# ליגות ללא נוכחות ב-Odds API (USL League Two, מונגוליה, לבנון וכד') מסוננות.
+LEAGUE_WHITELIST: set[int] = {
+    # כדורגל עולמי / אירופה עליונה
+    1,    # FIFA World Cup
+    2,    # UEFA Champions League
+    3,    # UEFA Europa League
+    39,   # Premier League
+    40,   # Championship (England 2nd)
+    140,  # La Liga
+    141,  # La Liga 2
+    78,   # Bundesliga
+    79,   # 2. Bundesliga
+    135,  # Serie A
+    136,  # Serie B
+    61,   # Ligue 1
+    62,   # Ligue 2
+    88,   # Eredivisie
+    94,   # Primeira Liga
+    106,  # Ekstraklasa (Poland)
+    113,  # Allsvenskan (Sweden)
+    103,  # Eliteserien (Norway)
+    119,  # Superliga (Denmark)
+    144,  # Jupiler Pro League (Belgium)
+    207,  # Super League (Switzerland)
+    # אמריקה
+    253,  # MLS
+    262,  # Liga MX
+    71,   # Brasileirão Serie A
+    128,  # Argentine Primera
+    # אסיה / אוסטרלסיה
+    98,   # J-League
+    292,  # K League 1
+    169,  # A-League (Australia)
+    # ליגות לאומיות
+    218,  # Bundesliga Austria
+    179,  # Scottish Premiership
+}
+
 # ── מצב גלובלי ───────────────────────────────────────────────────────────────
 _API_BLOCKED    = False
 _BLOCKED_REASON = ""
@@ -197,9 +237,18 @@ def get_all_fixtures() -> list[dict]:
     # ── שלב 3: ליגות דינמיות — 7 ימים קדימה ────────────────────────────────
     active_leagues  = get_all_active_leagues()
     MAX_LEAGUES     = 50  # מגביל למניעת rate limit
-    leagues_to_scan = [l for l in active_leagues if l["id"] != WC_LEAGUE_ID][:MAX_LEAGUES]
+
+    # סינון כפול: (1) Whitelist בלבד, (2) לא מונדיאל (כבר נכלל בשלב 2)
+    leagues_to_scan = [
+        l for l in active_leagues
+        if l["id"] != WC_LEAGUE_ID
+        and l["id"] in LEAGUE_WHITELIST
+    ][:MAX_LEAGUES]
 
     dynamic_added = 0
+    skipped_leagues = len([l for l in active_leagues if l["id"] != WC_LEAGUE_ID]) - len(leagues_to_scan)
+    if skipped_leagues > 0:
+        print(f"[API] שלב 3 — מדלג על {skipped_leagues} ליגות לא-רלוונטיות (Whitelist)", flush=True)
     for league_info in leagues_to_scan:
         if _API_BLOCKED:
             print("[API] ⛔ Rate limit — עוצר שלב 3", flush=True)
