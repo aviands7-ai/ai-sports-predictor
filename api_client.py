@@ -1,11 +1,12 @@
 """
 api_client.py — גישה ל-Football API v4
-דינמי לחלוטין: מגלה ליגות פעילות אוטומטית מה-API.
+דינמי + חסכוני: cache יומי, rate-limit protection, graceful stop.
 """
 
 import os
 import time
 from datetime import date, timedelta
+from typing import Optional
 import requests
 from dotenv import load_dotenv
 
@@ -15,57 +16,121 @@ API_KEY  = os.getenv("SPORTS_API_KEY")
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS  = {"x-apisports-key": API_KEY}
 
-# ── מונדיאל 2026 — תמיד נכלל (גם בין עונות) ─────────────────────────────────
 WC_LEAGUE_ID = 1
 WC_SEASON    = 2026
 WC_FROM      = "2026-06-11"
 WC_TO        = "2026-07-19"
 
+# ── מצב גלובלי ───────────────────────────────────────────────────────────────
+_API_BLOCKED    = False
+_BLOCKED_REASON = ""
 
-def _get(endpoint: str, params: dict, retries: int = 3) -> dict:
+# ── Cache יומי ────────────────────────────────────────────────────────────────
+_DAILY_CACHE: dict          = {}
+_CACHE_DATE:  Optional[str] = None
+
+
+def _get_cache_key(endpoint: str, params: dict) -> str:
+    return f"{endpoint}::{sorted(params.items())}"
+
+
+def _get(endpoint: str, params: dict, retries: int = 3,
+         use_cache: bool = False) -> dict:
+    """
+    קריאה ל-API עם:
+    - cache יומי (use_cache=True) — מניעת קריאות כפולות
+    - עצירה מיידית על 429 / 401 / 403
+    - retry עם exponential backoff על שגיאות רשת
+    """
+    global _API_BLOCKED, _BLOCKED_REASON, _DAILY_CACHE, _CACHE_DATE
+
+    if _API_BLOCKED:
+        print(f"[API] ⛔ מדולג — API חסום: {_BLOCKED_REASON}", flush=True)
+        return {}
+
+    today = date.today().strftime("%Y-%m-%d")
+    if _CACHE_DATE != today:
+        _DAILY_CACHE = {}
+        _CACHE_DATE  = today
+
+    if use_cache:
+        key = _get_cache_key(endpoint, params)
+        if key in _DAILY_CACHE:
+            return _DAILY_CACHE[key]
+
     url = f"{BASE_URL}/{endpoint}"
     for attempt in range(retries):
         try:
             res = requests.get(url, headers=HEADERS, params=params, timeout=15)
+
+            # עצירה מיידית — Rate Limit
             if res.status_code == 429:
-                wait = 2 ** attempt
-                print(f"[API] Rate limit, waiting {wait}s...", flush=True)
-                time.sleep(wait)
-                continue
+                _API_BLOCKED    = True
+                _BLOCKED_REASON = "Rate Limit (429) — חכה עד מחר"
+                print("[API] ⛔ RATE LIMIT! הסריקה נעצרת.", flush=True)
+                return {}
+
+            # עצירה מיידית — Key שגוי
+            if res.status_code in (401, 403):
+                _API_BLOCKED    = True
+                _BLOCKED_REASON = f"API Key לא תקין ({res.status_code})"
+                print("[API] ⛔ API KEY שגוי! הסריקה נעצרת.", flush=True)
+                return {}
+
             res.raise_for_status()
             data = res.json()
+
+            # בדיקת מכסה בתוך גוף התגובה
             if "errors" in data and data["errors"]:
-                print(f"[API] Errors: {data['errors']}", flush=True)
+                err = data["errors"]
+                print(f"[API] ⚠️ שגיאת API: {err}", flush=True)
+                err_str = str(err).lower()
+                if "requests" in err_str or "limit" in err_str or "quota" in err_str:
+                    _API_BLOCKED    = True
+                    _BLOCKED_REASON = "מכסה יומית נגמרה"
+                    print("[API] ⛔ מכסה נגמרה! הסריקה נעצרת.", flush=True)
+                    return {}
+
+            if use_cache:
+                _DAILY_CACHE[_get_cache_key(endpoint, params)] = data
             return data
+
         except requests.RequestException as e:
             print(f"[API] Attempt {attempt+1} failed: {e}", flush=True)
             if attempt < retries - 1:
-                time.sleep(1)
+                time.sleep(2 ** attempt)
+
     return {}
+
+
+def is_api_blocked() -> bool:
+    return _API_BLOCKED
+
+
+def reset_api_block():
+    global _API_BLOCKED, _BLOCKED_REASON
+    _API_BLOCKED    = False
+    _BLOCKED_REASON = ""
 
 
 def get_all_active_leagues() -> list[dict]:
     """
-    מגלה דינמית את כל ליגות הכדורגל הפעילות כרגע.
-    פונה ל-/leagues?current=true ומחזיר רשימת:
-      [{"id": int, "season": int, "name": str, "country": str}, ...]
-
-    מוגבל ל-100 ליגות עם מספר משחקים גדול מ-0 כדי לחסוך קריאות API.
+    מגלה דינמית את כל ליגות הכדורגל הפעילות.
+    Cache יומי — קריאה אחת בלבד ביום.
+    מחזיר: [{"id", "name", "country", "season"}, ...]
     """
-    data = _get("leagues", {"current": "true", "type": "League"})
+    data    = _get("leagues", {"current": "true", "type": "League"}, use_cache=True)
     leagues = []
 
     for item in data.get("response", []):
         league  = item.get("league", {})
         seasons = item.get("seasons", [])
 
-        # מצא את העונה הנוכחית
         current_season = None
         for s in seasons:
             if s.get("current"):
                 current_season = s.get("year")
                 break
-
         if not current_season:
             continue
 
@@ -84,14 +149,19 @@ def get_all_fixtures() -> list[dict]:
     """
     מושך את כל משחקי הכדורגל הפעילים בעולם.
 
-    שלב 1: כל משחקי היום (כולל כל ליגה שמשחקת היום).
-    שלב 2: מונדיאל 2026 — כל הטורניר.
-    שלב 3: ליגות פעילות דינמיות — 7 ימים קדימה.
-    מסנן כפילויות לפי fixture_id.
+    שלב 1 — כל משחקי היום (תאריך נוכחי, ללא סינון ליגה).
+    שלב 2 — מונדיאל 2026 — כל הטורניר (cache יומי).
+    שלב 3 — ליגות דינמיות — 7 ימים קדימה (מוגבל ל-50 ליגות).
+
+    עוצר אוטומטית אם ה-API חסום.
     """
+    if _API_BLOCKED:
+        print("[API] ⛔ API חסום — מדלג", flush=True)
+        return []
+
     today     = date.today().strftime("%Y-%m-%d")
     next_week = (date.today() + timedelta(days=7)).strftime("%Y-%m-%d")
-    all_fixtures = {}
+    all_fixtures: dict = {}
 
     # ── שלב 1: כל משחקי היום ────────────────────────────────────────────────
     data = _get("fixtures", {
@@ -103,13 +173,16 @@ def get_all_fixtures() -> list[dict]:
         all_fixtures[fid] = f
     print(f"[API] שלב 1 (היום): {len(all_fixtures)} משחקים", flush=True)
 
+    if _API_BLOCKED:
+        return _sorted_fixtures(all_fixtures)
+
     # ── שלב 2: מונדיאל 2026 — כל הטורניר ───────────────────────────────────
-    wc_data = _get("fixtures", {
+    wc_data  = _get("fixtures", {
         "league": WC_LEAGUE_ID,
         "season": WC_SEASON,
         "from":   WC_FROM,
         "to":     WC_TO,
-    })
+    }, use_cache=True)
     wc_added = 0
     for f in wc_data.get("response", []):
         fid = f["fixture"]["id"]
@@ -118,20 +191,23 @@ def get_all_fixtures() -> list[dict]:
             wc_added += 1
     print(f"[API] שלב 2 (מונדיאל): +{wc_added} משחקים", flush=True)
 
-    # ── שלב 3: ליגות פעילות דינמיות — 7 ימים קדימה ─────────────────────────
-    active_leagues = get_all_active_leagues()
-    dynamic_added  = 0
+    if _API_BLOCKED:
+        return _sorted_fixtures(all_fixtures)
 
-    for league_info in active_leagues:
-        lid    = league_info["id"]
-        season = league_info["season"]
+    # ── שלב 3: ליגות דינמיות — 7 ימים קדימה ────────────────────────────────
+    active_leagues  = get_all_active_leagues()
+    MAX_LEAGUES     = 50  # מגביל למניעת rate limit
+    leagues_to_scan = [l for l in active_leagues if l["id"] != WC_LEAGUE_ID][:MAX_LEAGUES]
 
-        if lid == WC_LEAGUE_ID:
-            continue  # כבר נמשך בשלב 2
+    dynamic_added = 0
+    for league_info in leagues_to_scan:
+        if _API_BLOCKED:
+            print("[API] ⛔ Rate limit — עוצר שלב 3", flush=True)
+            break
 
         ldata = _get("fixtures", {
-            "league": lid,
-            "season": season,
+            "league": league_info["id"],
+            "season": league_info["season"],
             "from":   today,
             "to":     next_week,
         })
@@ -141,16 +217,19 @@ def get_all_fixtures() -> list[dict]:
                 all_fixtures[fid] = f
                 dynamic_added += 1
 
-    print(f"[API] שלב 3 (דינמי, {len(active_leagues)} ליגות): +{dynamic_added} משחקים", flush=True)
+    print(f"[API] שלב 3 ({len(leagues_to_scan)} ליגות): +{dynamic_added} משחקים", flush=True)
+    result = _sorted_fixtures(all_fixtures)
+    print(f"[API] סה\"כ: {len(result)} משחקים ייחודיים", flush=True)
+    return result
 
-    fixtures = list(all_fixtures.values())
-    fixtures.sort(key=lambda x: x["fixture"]["timestamp"])
-    print(f"[API] סה\"כ: {len(fixtures)} משחקים ייחודיים", flush=True)
-    return fixtures
+
+def _sorted_fixtures(fixtures_dict: dict) -> list[dict]:
+    lst = list(fixtures_dict.values())
+    lst.sort(key=lambda x: x["fixture"]["timestamp"])
+    return lst
 
 
 def get_fixtures_by_date(date_str: str) -> list[dict]:
-    """מושך כל משחקי הכדורגל לתאריך נתון."""
     data = _get("fixtures", {
         "date":   date_str,
         "status": "NS-1H-HT-2H-ET-BT-P-FT-AET-PEN",
@@ -166,10 +245,7 @@ def get_injuries(fixture_id: int) -> list[dict]:
 
 
 def get_odds(fixture_id: int) -> dict | None:
-    """
-    שואב odds + timestamp עדכון.
-    מחזיר {"home": float, "draw": float, "away": float, "updated_at": str} או None.
-    """
+    """Fallback odds מ-API-Football (כשאין Odds API)."""
     data = _get("odds", {"fixture": fixture_id})
     try:
         response_item = data["response"][0]
