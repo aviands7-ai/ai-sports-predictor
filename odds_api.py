@@ -1,10 +1,13 @@
 """
 odds_api.py — The Odds API v4
-דינמי לחלוטין: מגלה ענפי ספורט פעילים אוטומטית מה-API.
+דינמי + חסכוני: cache יומי, rate-limit protection.
+מגלה ענפי ספורט אוטומטית. תומך ב-3-way (כדורגל) וב-2-way (טניס/בייסבול/כדורסל).
 """
 
 import os
 import requests
+from datetime import date
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,125 +20,180 @@ PREFERRED_BOOKMAKERS = [
     "unibet", "bwin", "draftkings", "fanduel",
 ]
 
-# ── cache של הספורט הפעיל (מתעדכן בכל הרצה) ─────────────────────────────────
-_SPORTS_CACHE: list[dict] = []
+# ── מצב גלובלי ───────────────────────────────────────────────────────────────
+_ODDS_BLOCKED    = False
+_BLOCKED_REASON  = ""
+
+# ── Cache יומי ────────────────────────────────────────────────────────────────
+_DAILY_CACHE: dict          = {}
+_CACHE_DATE:  Optional[str] = None
+_SPORTS_CACHE: list         = []
 
 
-def _get(endpoint: str, params: dict) -> list | dict | None:
+def _cache_get(key: str):
+    today = date.today().strftime("%Y-%m-%d")
+    global _CACHE_DATE, _DAILY_CACHE
+    if _CACHE_DATE != today:
+        _DAILY_CACHE = {}
+        _CACHE_DATE  = today
+    return _DAILY_CACHE.get(key)
+
+
+def _cache_set(key: str, value):
+    today = date.today().strftime("%Y-%m-%d")
+    global _CACHE_DATE, _DAILY_CACHE
+    if _CACHE_DATE != today:
+        _DAILY_CACHE = {}
+        _CACHE_DATE  = today
+    _DAILY_CACHE[key] = value
+
+
+def is_odds_blocked() -> bool:
+    return _ODDS_BLOCKED
+
+
+def _get(endpoint: str, params: dict,
+         cache_key: str = "") -> list | dict | None:
+    """
+    קריאה ל-Odds API עם:
+    - cache יומי אם cache_key נמסר
+    - עצירה מיידית על 429 / 401 / 403
+    """
+    global _ODDS_BLOCKED, _BLOCKED_REASON
+
+    if _ODDS_BLOCKED:
+        print(f"[OddsAPI] ⛔ חסום: {_BLOCKED_REASON}", flush=True)
+        return None
+
     if not ODDS_API_KEY:
         print("[OddsAPI] ❌ ODDS_API_KEY חסר", flush=True)
         return None
-    url = f"{BASE_URL}/{endpoint}"
+
+    if cache_key:
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+    url              = f"{BASE_URL}/{endpoint}"
     params["apiKey"] = ODDS_API_KEY
     try:
         res       = requests.get(url, params=params, timeout=10)
         remaining = res.headers.get("x-requests-remaining", "?")
-        print(f"[OddsAPI] קריאות שנותרו: {remaining}", flush=True)
-        if res.status_code in (401, 403):
-            print("[OddsAPI] ❌ API Key לא תקין", flush=True)
+        used      = res.headers.get("x-requests-used", "?")
+        print(f"[OddsAPI] קריאות: used={used} remaining={remaining}", flush=True)
+
+        # עצירה מיידית — Rate Limit
+        if res.status_code == 429:
+            _ODDS_BLOCKED    = True
+            _BLOCKED_REASON  = "Rate Limit (429)"
+            print("[OddsAPI] ⛔ RATE LIMIT! הסריקה נעצרת.", flush=True)
             return None
+
+        # עצירה מיידית — Key שגוי
+        if res.status_code in (401, 403):
+            _ODDS_BLOCKED    = True
+            _BLOCKED_REASON  = f"API Key לא תקין ({res.status_code})"
+            print("[OddsAPI] ⛔ API KEY שגוי! הסריקה נעצרת.", flush=True)
+            return None
+
+        # sport key לא קיים — ממשיך בשקט
         if res.status_code == 422:
             return None
-        if res.status_code == 429:
-            print("[OddsAPI] ❌ חרגת ממכסה", flush=True)
-            return None
+
         res.raise_for_status()
         data = res.json()
+
+        if cache_key and data:
+            _cache_set(cache_key, data)
+
         return data if data else None
+
     except requests.RequestException as e:
-        print(f"[OddsAPI] שגיאה: {e}", flush=True)
+        print(f"[OddsAPI] שגיאת רשת: {e}", flush=True)
         return None
 
 
 def _sport_has_draw(sport_key: str) -> bool:
     """
-    מזהה אוטומטית אם ענף ספורט כולל תיקו.
-    כדורגל תמיד 3-way. כל שאר ברירת מחדל 2-way.
+    כדורגל (soccer_*) = תמיד 3-way.
+    כל שאר = 2-way ללא תיקו.
     """
     return sport_key.startswith("soccer_")
 
 
 def get_all_available_sports() -> list[dict]:
     """
-    מגלה דינמית את כל ענפי הספורט הפעילים ב-The Odds API.
-    מחזיר רשימת:
-      [{"key": str, "title": str, "has_draw": bool, "active": bool}, ...]
-
-    מסנן רק ספורט פעיל (active=True).
+    מגלה דינמית את כל ענפי הספורט הפעילים.
+    Cache יומי — קריאה אחת בלבד ביום.
+    מחזיר: [{"key", "title", "has_draw", "group"}, ...]
     """
     global _SPORTS_CACHE
-    data = _get("sports", {"all": "false"})  # רק ספורט פעיל
 
+    cached = _cache_get("all_sports")
+    if cached:
+        return cached
+
+    data = _get("sports", {"all": "false"}, cache_key="all_sports")
     if not data or not isinstance(data, list):
         print("[OddsAPI] ⚠️ לא ניתן לטעון רשימת ספורט", flush=True)
-        return _SPORTS_CACHE  # fallback לcache
+        return _SPORTS_CACHE  # fallback לcache קודם
 
     sports = []
     for s in data:
         if not s.get("active", False):
             continue
-        key      = s.get("key", "")
-        has_draw = _sport_has_draw(key)
+        key = s.get("key", "")
         sports.append({
-            "key":       key,
-            "title":     s.get("title", key),
-            "group":     s.get("group", ""),
-            "has_draw":  has_draw,
+            "key":      key,
+            "title":    s.get("title", key),
+            "group":    s.get("group", ""),
+            "has_draw": _sport_has_draw(key),
         })
 
-    print(f"[OddsAPI] נמצאו {len(sports)} ענפי ספורט פעילים", flush=True)
-    soccer_count = sum(1 for s in sports if s["has_draw"])
-    other_count  = len(sports) - soccer_count
-    print(f"[OddsAPI]   כדורגל (3-way): {soccer_count} | ספורט אחר (2-way): {other_count}", flush=True)
+    print(f"[OddsAPI] {len(sports)} ענפי ספורט פעילים", flush=True)
+    soccer = sum(1 for s in sports if s["has_draw"])
+    print(f"[OddsAPI]   כדורגל (3-way): {soccer} | ספורט אחר (2-way): {len(sports)-soccer}", flush=True)
 
     _SPORTS_CACHE = sports
     return sports
 
 
-def _to_decimal(odd) -> float:
-    odd = float(odd)
-    if odd == int(odd) and abs(odd) >= 100:
-        if odd > 0: return round((odd / 100) + 1, 3)
-        else:       return round((100 / abs(odd)) + 1, 3)
-    return round(odd, 3)
-
-
 def _get_events() -> list:
     """
-    מגלה דינמית את כל ענפי הספורט הפעילים ואוסף משחקים מכולם.
-    כל event מתויג _sport_key ו-_has_draw לזיהוי אוטומטי.
+    מגלה דינמית ואוסף משחקים מכל ענפי הספורט הפעילים.
+    Cache יומי לכל sport_key.
+    כל event מתויג _sport_key ו-_has_draw.
+    עוצר אם ה-API חסום.
     """
     sports     = get_all_available_sports()
     all_events = {}
 
     for sport_info in sports:
+        if _ODDS_BLOCKED:
+            print("[OddsAPI] ⛔ חסום — עוצר איסוף events", flush=True)
+            break
+
         sport_key = sport_info["key"]
         has_draw  = sport_info["has_draw"]
+        ck        = f"events_{sport_key}"
 
         # EU/UK — Decimal
         data = _get(f"sports/{sport_key}/odds", {
             "regions":    "eu,uk",
             "markets":    "h2h",
             "oddsFormat": "decimal",
-        })
-        if data and len(data) > 0:
-            print(f"[OddsAPI] ✅ {sport_key} (EU): {len(data)} משחקים", flush=True)
-            for event in data:
-                eid = event.get("id")
-                if eid and eid not in all_events:
-                    event["_sport_key"] = sport_key
-                    event["_has_draw"]  = has_draw
-                    all_events[eid] = event
-            continue
+        }, cache_key=ck)
 
-        # US — American
-        data = _get(f"sports/{sport_key}/odds", {
-            "regions":    "us",
-            "markets":    "h2h",
-            "oddsFormat": "american",
-        })
-        if data and len(data) > 0:
-            print(f"[OddsAPI] ✅ {sport_key} (US): {len(data)} משחקים", flush=True)
+        if not data or not isinstance(data, list) or len(data) == 0:
+            # US — American
+            data = _get(f"sports/{sport_key}/odds", {
+                "regions":    "us",
+                "markets":    "h2h",
+                "oddsFormat": "american",
+            }, cache_key=f"{ck}_us")
+
+        if data and isinstance(data, list) and len(data) > 0:
+            print(f"[OddsAPI] ✅ {sport_key}: {len(data)} משחקים", flush=True)
             for event in data:
                 eid = event.get("id")
                 if eid and eid not in all_events:
@@ -144,9 +202,7 @@ def _get_events() -> list:
                     all_events[eid] = event
 
     result = list(all_events.values())
-    if not result:
-        print("[OddsAPI] ⚠️ לא נמצאו משחקים", flush=True)
-    else:
+    if result:
         print(f"[OddsAPI] סה\"כ: {len(result)} משחקים ייחודיים", flush=True)
     return result
 
@@ -164,19 +220,18 @@ def _find_event(data: list, home_team: str, away_team: str) -> dict | None:
     return None
 
 
-def list_available_matches() -> list[str]:
-    data = _get_events()
-    return [
-        f"{e.get('home_team')} vs {e.get('away_team')} "
-        f"({e.get('_sport_key','?')}) {e.get('commence_time','')[:10]}"
-        for e in data
-    ]
+def _to_decimal(odd) -> float:
+    odd = float(odd)
+    if odd == int(odd) and abs(odd) >= 100:
+        if odd > 0: return round((odd / 100) + 1, 3)
+        else:       return round((100 / abs(odd)) + 1, 3)
+    return round(odd, 3)
 
 
 def _extract_odds(event: dict) -> list[dict]:
     """
     מחלץ odds מכל הבוקמייקרים.
-    תומך אוטומטית ב-3-way (עם draw) וב-2-way (ללא draw).
+    תומך אוטומטית ב-3-way (draw קיים) וב-2-way (draw לא קיים).
     """
     all_books      = []
     home_team_name = event.get("home_team", "").lower()
@@ -207,8 +262,8 @@ def _extract_odds(event: dict) -> list[dict]:
             away_d = _to_decimal(raw_away)
             draw_d = _to_decimal(raw_draw) if raw_draw else 0.0
 
-            vals = [home_d, away_d] + ([draw_d] if has_draw and draw_d > 0 else [])
-            if any(x < 1.01 or x > 50 for x in vals):
+            check = [home_d, away_d] + ([draw_d] if has_draw and draw_d > 0 else [])
+            if any(x < 1.01 or x > 50 for x in check):
                 continue
 
             all_books.append({
@@ -224,67 +279,12 @@ def _extract_odds(event: dict) -> list[dict]:
     return all_books
 
 
-def get_live_odds(home_team: str, away_team: str) -> dict | None:
-    data = _get_events()
-    if not data:
-        return None
-    event = _find_event(data, home_team, away_team)
-    if not event:
-        available = [f"{e.get('home_team')} vs {e.get('away_team')}" for e in data[:10]]
-        print(f"[OddsAPI] לא נמצא: '{home_team}' vs '{away_team}'", flush=True)
-        print(f"[OddsAPI] זמינים: {available}", flush=True)
-        return None
-
-    all_books = _extract_odds(event)
-    if not all_books:
-        return None
-
-    best_odds     = None
-    best_priority = 999
-    for book in all_books:
-        priority = PREFERRED_BOOKMAKERS.index(book["key"]) if book["key"] in PREFERRED_BOOKMAKERS else 999
-        if priority < best_priority:
-            best_priority = priority
-            best_odds = {
-                "home":        book["home"],
-                "draw":        book["draw"],
-                "away":        book["away"],
-                "bookmaker":   book["name"],
-                "last_update": book["last_update"],
-                "has_draw":    book["has_draw"],
-                "all_books":   all_books,
-            }
-    return best_odds
-
-
-def get_best_odds(home_team: str, away_team: str) -> dict | None:
-    result = get_live_odds(home_team, away_team)
-    if not result or not result.get("all_books"):
-        return result
-
-    all_books = result["all_books"]
-    best_home = max(all_books, key=lambda b: b["home"])
-    best_draw = max(all_books, key=lambda b: b["draw"]) if result.get("has_draw") else None
-    best_away = max(all_books, key=lambda b: b["away"])
-
-    return {
-        "home":         best_home["home"],
-        "home_book":    best_home["name"],
-        "draw":         best_draw["draw"] if best_draw else 0.0,
-        "draw_book":    best_draw["name"] if best_draw else "",
-        "away":         best_away["away"],
-        "away_book":    best_away["name"],
-        "last_update":  best_home["last_update"],
-        "has_draw":     result.get("has_draw", True),
-        "all_books":    all_books,
-        "is_best_line": True,
-    }
-
-
 def get_all_odds_batch() -> dict:
     """
     קריאה דינמית אחת לכל ענפי הספורט הפעילים.
-    מחזיר מילון {(home_team, away_team): odds_dict} עם has_draw.
+    מחזיר מילון {(home_team, away_team): odds_dict}.
+    כל ערך כולל has_draw לזיהוי 2-way/3-way.
+    Cache יומי לכל sport_key.
     """
     data = _get_events()
     if not data:
@@ -332,12 +332,76 @@ def get_all_odds_batch() -> dict:
 
 
 def lookup_odds_from_batch(batch: dict, home_team: str, away_team: str) -> dict | None:
+    """
+    שולף odds ממילון ה-batch.
+    חיפוש מדויק → חיפוש גמיש לפי מילים.
+    """
     key = (home_team.lower(), away_team.lower())
     if key in batch:
         return batch[key]
+
     home_words = set(home_team.lower().split())
     away_words = set(away_team.lower().split())
     for (bh, ba), odds in batch.items():
         if bool(home_words & set(bh.split())) and bool(away_words & set(ba.split())):
             return odds
     return None
+
+
+def get_live_odds(home_team: str, away_team: str) -> dict | None:
+    data = _get_events()
+    if not data:
+        return None
+    event = _find_event(data, home_team, away_team)
+    if not event:
+        return None
+    all_books = _extract_odds(event)
+    if not all_books:
+        return None
+    best_odds     = None
+    best_priority = 999
+    for book in all_books:
+        priority = PREFERRED_BOOKMAKERS.index(book["key"]) if book["key"] in PREFERRED_BOOKMAKERS else 999
+        if priority < best_priority:
+            best_priority = priority
+            best_odds = {
+                "home":        book["home"],
+                "draw":        book["draw"],
+                "away":        book["away"],
+                "bookmaker":   book["name"],
+                "last_update": book["last_update"],
+                "has_draw":    book["has_draw"],
+                "all_books":   all_books,
+            }
+    return best_odds
+
+
+def get_best_odds(home_team: str, away_team: str) -> dict | None:
+    result = get_live_odds(home_team, away_team)
+    if not result or not result.get("all_books"):
+        return result
+    all_books = result["all_books"]
+    best_home = max(all_books, key=lambda b: b["home"])
+    best_draw = max(all_books, key=lambda b: b["draw"]) if result.get("has_draw") else None
+    best_away = max(all_books, key=lambda b: b["away"])
+    return {
+        "home":         best_home["home"],
+        "home_book":    best_home["name"],
+        "draw":         best_draw["draw"] if best_draw else 0.0,
+        "draw_book":    best_draw["name"] if best_draw else "",
+        "away":         best_away["away"],
+        "away_book":    best_away["name"],
+        "last_update":  best_home["last_update"],
+        "has_draw":     result.get("has_draw", True),
+        "all_books":    all_books,
+        "is_best_line": True,
+    }
+
+
+def list_available_matches() -> list[str]:
+    data = _get_events()
+    return [
+        f"{e.get('home_team')} vs {e.get('away_team')} "
+        f"({e.get('_sport_key','?')}) {e.get('commence_time','')[:10]}"
+        for e in data
+    ]
