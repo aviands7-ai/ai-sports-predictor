@@ -1,16 +1,82 @@
 """
-engine.py — ליבת המודל המתמטי v2
-Elo + FIFA Starting Ratings + Form Factor + Dynamic K + Poisson + Kelly
+engine.py — ליבת המודל המתמטי v3
+Elo + Dixon-Coles + Logistic (2-way) + Kelly + Form Factor
+תומך בכדורגל (3-way + Poisson) ובספורט ללא תיקו (2-way + Logistic).
 """
 
 import math
 from scipy.stats import poisson
 
 
+# ─── זיהוי ענף ספורט ────────────────────────────────────────────────────────────
+
+# ענפי ספורט ללא תיקו (2-way markets)
+NO_DRAW_SPORTS = {
+    "tennis", "baseball", "basketball", "american_football",
+    "hockey", "volleyball", "handball",
+}
+
+# מיפוי league_id לסוג ספורט
+LEAGUE_SPORT_MAP = {
+    # כדורגל (3-way)
+    1:   "soccer",   # World Cup
+    253: "soccer",   # MLS
+    98:  "soccer",   # J-League
+    71:  "soccer",   # Brasileirão
+    113: "soccer",   # Allsvenskan
+    103: "soccer",   # Eliteserien
+    244: "soccer",   # Veikkausliiga
+    2:   "soccer",   # Champions League
+    3:   "soccer",   # Europa League
+    39:  "soccer",   # Premier League
+    140: "soccer",   # La Liga
+    78:  "soccer",   # Bundesliga
+    135: "soccer",   # Serie A
+    61:  "soccer",   # Ligue 1
+}
+
+# מיפוי sport_key של Odds API לסוג ספורט
+SPORT_KEY_MAP = {
+    "soccer_fifa_world_cup":                  "soccer",
+    "soccer_international":                   "soccer",
+    "soccer_fifa_world_cup_qualifier_conmebol": "soccer",
+    "soccer_usa_mls":                         "soccer",
+    "soccer_japan_j_league":                  "soccer",
+    "soccer_brazil_campeonato":               "soccer",
+    "soccer_sweden_allsvenskan":              "soccer",
+    "soccer_norway_eliteserien":              "soccer",
+    "soccer_finland_veikkausliiga":           "soccer",
+    "soccer_epl":                             "soccer",
+    "soccer_spain_la_liga":                   "soccer",
+    "soccer_germany_bundesliga":              "soccer",
+    "soccer_italy_serie_a":                   "soccer",
+    "soccer_france_ligue_one":                "soccer",
+    "soccer_uefa_champs_league":              "soccer",
+    "soccer_uefa_europa_league":              "soccer",
+    "tennis_atp":                             "tennis",
+    "tennis_wta":                             "tennis",
+    "baseball_mlb":                           "baseball",
+    "basketball_nba":                         "basketball",
+    "basketball_euroleague":                  "basketball",
+}
+
+
+def sport_has_draw(sport: str) -> bool:
+    """מחזיר True אם הספורט כולל תיקו (3-way)."""
+    return sport.lower() == "soccer"
+
+
+def detect_sport_from_league(league_id: int) -> str:
+    """מזהה ענף ספורט לפי league_id."""
+    return LEAGUE_SPORT_MAP.get(league_id, "soccer")
+
+
+def detect_sport_from_key(sport_key: str) -> str:
+    """מזהה ענף ספורט לפי Odds API sport_key."""
+    return SPORT_KEY_MAP.get(sport_key, "soccer")
+
+
 # ─── FIFA-Based Starting Elo ────────────────────────────────────────────────────
-# דירוג התחלתי מבוסס FIFA Ranking (יוני 2026)
-# מקור: FIFA World Ranking + המרה ל-Elo scale
-# קבוצות שלא ברשימה מקבלות 1400 (ברירת מחדל לקבוצות חלשות)
 
 FIFA_STARTING_ELO = {
     # Top tier (1700-1900)
@@ -68,7 +134,6 @@ FIFA_STARTING_ELO = {
     "El Salvador":     1420,
     "Bolivia":         1415,
     "Venezuela":       1410,
-    # Weaker (below 1400)
     "New Zealand":     1390,
     "South Africa":    1385,
     "Mali":            1380,
@@ -76,40 +141,32 @@ FIFA_STARTING_ELO = {
     "Cape Verde":      1370,
 }
 
+
 def get_starting_elo(team_name: str) -> float:
-    """
-    מחזיר Elo התחלתי לפי FIFA Ranking.
-    מנסה match מדויק, אחר-כך partial match, אחר-כך 1400.
-    """
-    # exact match
+    """מחזיר Elo התחלתי לפי FIFA Ranking."""
     if team_name in FIFA_STARTING_ELO:
         return float(FIFA_STARTING_ELO[team_name])
-    # partial match (למקרה של הבדלי שמות קלים)
     for key, val in FIFA_STARTING_ELO.items():
         if key.lower() in team_name.lower() or team_name.lower() in key.lower():
             return float(val)
-    return 1400.0  # ברירת מחדל לקבוצות לא מוכרות
+    return 1400.0
 
 
 # ─── Dynamic K Factor ───────────────────────────────────────────────────────────
 
 def dynamic_k(round_name: str = "") -> float:
-    """
-    K דינמי לפי שלב הטורניר.
-    שלב מתקדם = המשחק "שווה יותר" ← K גבוה יותר.
-    """
     round_lower = round_name.lower()
     if "final" in round_lower and "semi" not in round_lower:
-        return 60.0   # גמר
+        return 60.0
     elif "semi" in round_lower:
-        return 55.0   # חצי גמר
+        return 55.0
     elif "quarter" in round_lower:
-        return 50.0   # רבע גמר
+        return 50.0
     elif "round of 16" in round_lower or "last 16" in round_lower:
-        return 45.0   # שמינית גמר
+        return 45.0
     elif "group" in round_lower:
-        return 40.0   # שלב בית
-    return 40.0       # ברירת מחדל
+        return 40.0
+    return 40.0
 
 
 # ─── Form Factor ────────────────────────────────────────────────────────────────
@@ -118,54 +175,34 @@ def calculate_form_factor(recent_matches: list[dict], team_id: int) -> float:
     """
     מחשב Form Factor מ-5 משחקים אחרונים.
     מחזיר multiplier בין 0.85 (טופס גרוע) ל-1.15 (טופס מצוין).
-
-    recent_matches: רשימת fixtures מה-API (מסודרת מהישן לחדש).
-    team_id: ה-ID של הקבוצה שאנחנו מחשבים עבורה.
     """
     if not recent_matches:
         return 1.0
 
-    points = []
-    weights = [0.10, 0.15, 0.20, 0.25, 0.30]  # משחק אחרון שווה יותר
+    points  = []
+    weights = [0.10, 0.15, 0.20, 0.25, 0.30]
 
-    for i, match in enumerate(recent_matches[-5:]):
-        home_id = match["teams"]["home"]["id"]
-        away_id = match["teams"]["away"]["id"]
+    for match in recent_matches[-5:]:
+        home_id    = match["teams"]["home"]["id"]
         home_goals = match["goals"]["home"] or 0
         away_goals = match["goals"]["away"] or 0
-        status = match["fixture"]["status"]["short"]
-
-        is_home = (home_id == team_id)
+        status     = match["fixture"]["status"]["short"]
+        is_home    = (home_id == team_id)
 
         if status == "PEN":
-            # פנדלים = חצי נקודה
             points.append(0.5)
         elif is_home:
-            if home_goals > away_goals:
-                points.append(1.0)   # ניצחון
-            elif home_goals == away_goals:
-                points.append(0.5)   # תיקו
-            else:
-                points.append(0.0)   # הפסד
+            points.append(1.0 if home_goals > away_goals else (0.5 if home_goals == away_goals else 0.0))
         else:
-            if away_goals > home_goals:
-                points.append(1.0)
-            elif away_goals == home_goals:
-                points.append(0.5)
-            else:
-                points.append(0.0)
+            points.append(1.0 if away_goals > home_goals else (0.5 if away_goals == home_goals else 0.0))
 
     if not points:
         return 1.0
 
-    # weighted average
     active_weights = weights[-len(points):]
-    total_weight = sum(active_weights)
-    weighted_avg = sum(p * w for p, w in zip(points, active_weights)) / total_weight
-
-    # המרה ל-multiplier: 0.0 → 0.85, 0.5 → 1.0, 1.0 → 1.15
-    form_multiplier = 0.85 + (weighted_avg * 0.30)
-    return round(form_multiplier, 3)
+    total_weight   = sum(active_weights)
+    weighted_avg   = sum(p * w for p, w in zip(points, active_weights)) / total_weight
+    return round(0.85 + (weighted_avg * 0.30), 3)
 
 
 # ─── Elo ───────────────────────────────────────────────────────────────────────
@@ -179,65 +216,87 @@ def update_elo(elo_home: float, elo_away: float,
                home_goals: int, away_goals: int,
                status: str, k: float = 40,
                home_advantage: float = 0.0) -> tuple[float, float]:
-    """
-    מעדכן דירוגי Elo אחרי משחק שהסתיים.
-    כולל שקלול הפרש שערים — ניצחון 3-0 שווה יותר מ-1-0.
-    home_advantage=0 במגרש נייטרלי (מונדיאל).
-    """
+    """מעדכן דירוגי Elo אחרי משחק שהסתיים."""
     adj_home = elo_home + home_advantage
     exp_home = expected_score(adj_home, elo_away)
 
     if status == "PEN":
-        actual_home, actual_away = 0.5, 0.5
-        goal_diff_factor = 1.0  # פנדלים = ניצחון שקול
+        actual_home, goal_diff_factor = 0.5, 1.0
     elif home_goals > away_goals:
-        actual_home, actual_away = 1.0, 0.0
+        actual_home = 1.0
         goal_diff_factor = _goal_diff_multiplier(home_goals - away_goals)
     elif home_goals < away_goals:
-        actual_home, actual_away = 0.0, 1.0
+        actual_home = 0.0
         goal_diff_factor = _goal_diff_multiplier(away_goals - home_goals)
     else:
-        actual_home, actual_away = 0.5, 0.5
-        goal_diff_factor = 1.0
+        actual_home, goal_diff_factor = 0.5, 1.0
 
-    # K מוכפל בפקטור הפרש השערים
     k_adjusted = k * goal_diff_factor
-
     new_home = round(elo_home + k_adjusted * (actual_home - exp_home), 1)
     new_away = round(elo_away + k_adjusted * (1.0 - actual_home - (1.0 - exp_home)), 1)
     return new_home, new_away
 
 
+def update_elo_2way(elo_home: float, elo_away: float,
+                    home_won: bool, k: float = 40) -> tuple[float, float]:
+    """
+    עדכון Elo לספורט דו-כיווני (ללא תיקו).
+    home_won: True אם הביתי ניצח, False אם האורח ניצח.
+    """
+    exp_home = expected_score(elo_home, elo_away)
+    actual_home = 1.0 if home_won else 0.0
+    new_home = round(elo_home + k * (actual_home - exp_home), 1)
+    new_away = round(elo_away + k * (1.0 - actual_home - (1.0 - exp_home)), 1)
+    return new_home, new_away
+
+
 def _goal_diff_multiplier(diff: int) -> float:
-    """
-    מכפיל K לפי הפרש שערים.
-    1 שער = 1.0, 2 שערים = 1.5, 3+ שערים = 1.75
-    נוסחת FIFA Elo הקלאסית.
-    """
-    if diff == 1:
-        return 1.0
-    elif diff == 2:
-        return 1.5
-    else:
-        return 1.75
+    if diff == 1:   return 1.0
+    elif diff == 2: return 1.5
+    else:           return 1.75
 
 
 def apply_lineup_factor(xg_home: float, xg_away: float,
                         lineup_factor_home: float = 1.0,
                         lineup_factor_away: float = 1.0) -> tuple[float, float]:
-    """
-    מתאים xG לפי עוצמת ההרכב.
-    lineup_factor = 1.0 → הרכב מלא
-    lineup_factor = 0.85 → כוכב אחד חסר
-    lineup_factor = 0.70 → מספר כוכבים חסרים
-    """
     return (
         round(max(0.1, xg_home * lineup_factor_home), 3),
         round(max(0.1, xg_away * lineup_factor_away), 3),
     )
 
 
-# ─── Poisson ───────────────────────────────────────────────────────────────────
+# ─── 2-Way Logistic Model (ללא תיקו) ───────────────────────────────────────────
+
+def match_probabilities_2way(elo_home: float, elo_away: float,
+                              form_home: float = 1.0,
+                              form_away: float = 1.0) -> dict:
+    """
+    מחשב הסתברויות לספורט ללא תיקו (טניס, בייסבול, כדורסל).
+    משתמש בנוסחה הלוגיסטית הסטנדרטית של Elo:
+      P(home wins) = 1 / (1 + 10^((EloAway - EloHome) / 400))
+
+    Form Factor מוסף כ-bonus Elo זמני.
+    """
+    # Form Factor הופך ל-Elo bonus (±30 נקודות מקסימום)
+    elo_bonus_home = (form_home - 1.0) * 100
+    elo_bonus_away = (form_away - 1.0) * 100
+
+    adj_elo_home = elo_home + elo_bonus_home
+    adj_elo_away = elo_away + elo_bonus_away
+
+    p_home = expected_score(adj_elo_home, adj_elo_away)
+    p_away = round(1.0 - p_home, 4)
+    p_home = round(p_home, 4)
+
+    return {
+        "home": p_home,
+        "draw": 0.0,
+        "away": p_away,
+        "has_draw": False,
+    }
+
+
+# ─── Poisson + Dixon-Coles (כדורגל) ────────────────────────────────────────────
 
 def expected_goals(elo_home: float, elo_away: float,
                    home_advantage: float = 0.0,
@@ -246,49 +305,24 @@ def expected_goals(elo_home: float, elo_away: float,
                    form_away: float = 1.0,
                    lineup_home: float = 1.0,
                    lineup_away: float = 1.0) -> tuple[float, float]:
-    """
-    מחשב שערים צפויים לכל קבוצה.
-    כולל Form Factor + Lineup Factor.
-    lineup_home/away: 0.7-1.0 לפי עוצמת ההרכב
-    """
-    elo_diff = (elo_home + home_advantage) - elo_away
+    elo_diff     = (elo_home + home_advantage) - elo_away
     base_xg_home = max(0.1, league_avg_goals + (elo_diff / 250))
     base_xg_away = max(0.1, league_avg_goals - (elo_diff / 250))
-
-    # Form Factor + Lineup Factor משפיעים על ה-xG
-    xg_home = round(max(0.1, base_xg_home * form_home * lineup_home), 3)
-    xg_away = round(max(0.1, base_xg_away * form_away * lineup_away), 3)
+    xg_home      = round(max(0.1, base_xg_home * form_home * lineup_home), 3)
+    xg_away      = round(max(0.1, base_xg_away * form_away * lineup_away), 3)
     return xg_home, xg_away
 
 
 def _dixon_coles_tau(home_goals: int, away_goals: int,
                      xg_home: float, xg_away: float,
                      rho: float) -> float:
-    """
-    פרמטר תלות Dixon-Coles — τ(i,j,λ,μ,ρ).
-    מתקן את ההסתברויות לתוצאות דל-שערים.
-
-    rho=-0.13 (ברירת מחדל):
-    - מנפח: P(0-0) — יותר מ-Poisson קלאסי  ✅
-    - מקטין: P(1-0), P(0-1) — מעט פחות    ✅
-    - מנפח: P(1-1)                          ✅
-
-    זהו הערך המכויל הידוע מספרות המחקר על ליגות אירופאיות.
-    Dixon & Coles (1997): Applied Statistics, 46(2), 265-280.
-    """
     i, j = home_goals, away_goals
     lam, mu = xg_home, xg_away
-
-    if i == 0 and j == 0:
-        return 1 - lam * mu * rho
-    elif i == 1 and j == 0:
-        return 1 + mu * rho
-    elif i == 0 and j == 1:
-        return 1 + lam * rho
-    elif i == 1 and j == 1:
-        return 1 - rho
-    else:
-        return 1.0
+    if   i == 0 and j == 0: return max(1e-9, 1 - lam * mu * rho)
+    elif i == 1 and j == 0: return max(1e-9, 1 + mu * rho)
+    elif i == 0 and j == 1: return max(1e-9, 1 + lam * rho)
+    elif i == 1 and j == 1: return max(1e-9, 1 - rho)
+    else:                   return 1.0
 
 
 def match_probabilities(elo_home: float, elo_away: float,
@@ -299,18 +333,7 @@ def match_probabilities(elo_home: float, elo_away: float,
                         lineup_away: float = 1.0,
                         max_goals: int = 6,
                         rho: float = -0.13) -> dict:
-    """
-    מחשב הסתברויות לפי Dixon-Coles Bivariate Poisson.
-
-    שיפור מהותי על פואסון קלאסי:
-    פואסון סטנדרטי מניח עצמאות בין שערי הקבוצות — שגוי בכדורגל.
-    Dixon-Coles מוסיף פרמטר ρ (rho) שמתקן תוצאות דל-שערים:
-    - מנפח: P(0-0), P(1-0), P(0-1)
-    - מקטין: P(1-1)
-
-    rho = -0.13 הוא ערך מכויל על נתוני ליגות אירופאיות (ממוצע מחקרי).
-    ניתן להעביר rho=0 לחזור לפואסון קלאסי.
-    """
+    """Dixon-Coles Bivariate Poisson — לכדורגל בלבד."""
     xg_h, xg_a = expected_goals(
         elo_home, elo_away, home_advantage,
         form_home=form_home, form_away=form_away,
@@ -325,33 +348,27 @@ def match_probabilities(elo_home: float, elo_away: float,
 
     for i in range(max_goals + 1):
         for j in range(max_goals + 1):
-            # Dixon-Coles correction — רק לתוצאות דל-שערים
             tau = _dixon_coles_tau(i, j, xg_h, xg_a, rho)
-            p = home_pmf[i] * away_pmf[j] * tau
-            p = max(0.0, p)  # מניעת הסתברות שלילית
+            p   = max(0.0, home_pmf[i] * away_pmf[j] * tau)
             score_matrix[f"{i}-{j}"] = p
-            if i > j:
-                home_win += p
-            elif i == j:
-                draw += p
-            else:
-                away_win += p
+            if i > j:   home_win += p
+            elif i == j: draw    += p
+            else:        away_win += p
 
-    # נרמול (Dixon-Coles לא מבטיח סכום=1)
     total = home_win + draw + away_win
     return {
-        "home": round(home_win / total, 4),
-        "draw": round(draw / total, 4),
-        "away": round(away_win / total, 4),
-        "xg_home": xg_h,
-        "xg_away": xg_a,
+        "home":         round(home_win / total, 4),
+        "draw":         round(draw / total, 4),
+        "away":         round(away_win / total, 4),
+        "xg_home":      xg_h,
+        "xg_away":      xg_a,
         "score_matrix": {k: v/total for k, v in score_matrix.items()},
-        "rho": rho,
+        "rho":          rho,
+        "has_draw":     True,
     }
 
 
 def most_likely_scores(score_matrix: dict, top_n: int = 5) -> list[tuple[str, float]]:
-    """מחזיר את התוצאות הסבירות ביותר."""
     sorted_scores = sorted(score_matrix.items(), key=lambda x: x[1], reverse=True)
     return [(score, round(prob * 100, 1)) for score, prob in sorted_scores[:top_n]]
 
@@ -359,25 +376,24 @@ def most_likely_scores(score_matrix: dict, top_n: int = 5) -> list[tuple[str, fl
 # ─── Kelly Criterion ───────────────────────────────────────────────────────────
 
 def implied_probability(odds: float) -> float:
-    if odds <= 1.0:
-        return 1.0
+    if odds <= 1.0: return 1.0
     return 1.0 / odds
 
 
-def overround(odds_home: float, odds_draw: float, odds_away: float) -> float:
-    total = implied_probability(odds_home) + implied_probability(odds_draw) + implied_probability(odds_away)
+def overround(odds_home: float, odds_draw: float = 0.0, odds_away: float = 0.0) -> float:
+    total = implied_probability(odds_home) + implied_probability(odds_away)
+    if odds_draw and odds_draw > 1.0:
+        total += implied_probability(odds_draw)
     return round((total - 1.0) * 100, 2)
 
 
 def fair_odds(our_prob: float) -> float:
-    if our_prob <= 0:
-        return 0.0
+    if our_prob <= 0: return 0.0
     return round(1.0 / our_prob, 3)
 
 
 def expected_value(our_prob: float, odds: float) -> float:
-    if odds <= 1.0 or our_prob <= 0:
-        return 0.0
+    if odds <= 1.0 or our_prob <= 0: return 0.0
     return round((our_prob * odds) - 1.0, 4)
 
 
@@ -385,45 +401,34 @@ def kelly_fraction(our_prob: float, odds: float,
                    fraction: float = 0.25,
                    max_bet: float = 0.05) -> float:
     ev = expected_value(our_prob, odds)
-    if ev <= 0:
-        return 0.0
+    if ev <= 0: return 0.0
     b = odds - 1.0
     q = 1.0 - our_prob
     full_kelly = (our_prob * b - q) / b
-    safe = min(full_kelly * fraction, max_bet)
-    return round(max(safe, 0.0), 4)
+    return round(max(min(full_kelly * fraction, max_bet), 0.0), 4)
 
 
 def closing_line_value(our_prob: float, closing_odds: float) -> float:
-    closing_prob = implied_probability(closing_odds)
-    return round(our_prob - closing_prob, 4)
+    return round(our_prob - implied_probability(closing_odds), 4)
 
 
 # ─── Odds Freshness ────────────────────────────────────────────────────────────
 
 def odds_freshness(odds_updated_at: str | None) -> dict:
-    """
-    בודק כמה ישנים יחסי ההימורים.
-    מחזיר: status ('live'|'fresh'|'stale'|'missing'), hours_ago, label.
-    """
     if not odds_updated_at:
         return {"status": "missing", "hours_ago": None, "label": "⚪ אין odds", "color": "#6b7a99"}
-
     from datetime import datetime, timezone
     try:
-        # parse ISO format
-        updated = datetime.fromisoformat(odds_updated_at.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        hours_ago = (now - updated).total_seconds() / 3600
-
+        updated   = datetime.fromisoformat(odds_updated_at.replace("Z", "+00:00"))
+        hours_ago = (datetime.now(timezone.utc) - updated).total_seconds() / 3600
         if hours_ago < 1:
-            return {"status": "live", "hours_ago": round(hours_ago, 1), "label": f"🟢 חי ({int(hours_ago*60)} דקות)", "color": "#10b981"}
+            return {"status": "live",  "hours_ago": round(hours_ago,1), "label": f"🟢 חי ({int(hours_ago*60)} דקות)", "color": "#10b981"}
         elif hours_ago < 24:
-            return {"status": "fresh", "hours_ago": round(hours_ago, 1), "label": f"🟡 {round(hours_ago, 1)} שעות", "color": "#f59e0b"}
+            return {"status": "fresh", "hours_ago": round(hours_ago,1), "label": f"🟡 {round(hours_ago,1)} שעות",    "color": "#f59e0b"}
         elif hours_ago < 72:
-            return {"status": "stale", "hours_ago": round(hours_ago, 1), "label": f"🟠 {int(hours_ago/24)} ימים", "color": "#ef4444"}
+            return {"status": "stale", "hours_ago": round(hours_ago,1), "label": f"🟠 {int(hours_ago/24)} ימים",     "color": "#ef4444"}
         else:
-            return {"status": "old", "hours_ago": round(hours_ago, 1), "label": f"🔴 ישן ({int(hours_ago/24)} ימים)", "color": "#dc2626"}
+            return {"status": "old",   "hours_ago": round(hours_ago,1), "label": f"🔴 ישן ({int(hours_ago/24)} ימים)","color": "#dc2626"}
     except Exception:
         return {"status": "missing", "hours_ago": None, "label": "⚪ תאריך לא ידוע", "color": "#6b7a99"}
 
@@ -439,48 +444,85 @@ def full_match_analysis(elo_home: float, elo_away: float,
                         lineup_away: float = 1.0,
                         pure_probs: dict | None = None,
                         odds_updated_at: str | None = None,
-                        rho: float = -0.13) -> dict:
+                        rho: float = -0.13,
+                        has_draw: bool = True) -> dict:
     """
-    ניתוח מלא: הסתברויות + Form + Lineup + EV + Kelly + Odds Freshness.
-    rho: פרמטר Dixon-Coles — מכויל אוטומטית מ-main.py.
+    ניתוח מלא לכל ענפי הספורט.
+
+    has_draw=True  → כדורגל: Dixon-Coles Bivariate Poisson (3-way)
+    has_draw=False → ספורט ללא תיקו: נוסחה לוגיסטית (2-way)
     """
-    probs = match_probabilities(
-        elo_home, elo_away, home_advantage,
-        form_home=form_home, form_away=form_away,
-        lineup_home=lineup_home, lineup_away=lineup_away,
-        rho=rho,
-    )
+    if has_draw:
+        # ── כדורגל — Dixon-Coles ────────────────────────────────────────────
+        probs = match_probabilities(
+            elo_home, elo_away, home_advantage,
+            form_home=form_home, form_away=form_away,
+            lineup_home=lineup_home, lineup_away=lineup_away,
+            rho=rho,
+        )
+        outcomes = ["home", "draw", "away"]
+        ev_probs = pure_probs if pure_probs else probs
 
-    # הסתברויות לחישוב EV — תמיד מהמודל הטהור (ללא שוק)
-    ev_probs = pure_probs if pure_probs else probs
+        results = {}
+        for outcome in outcomes:
+            p_display = probs[outcome]
+            p_ev      = ev_probs.get(outcome, p_display)
+            o         = odds.get(outcome, 0)
+            results[outcome] = {
+                "our_prob":     round(p_display * 100, 1),
+                "our_prob_raw": p_display,
+                "our_prob_ev":  round(p_ev * 100, 1),
+                "odds":         o,
+                "implied_prob": round(implied_probability(o) * 100, 1),
+                "fair_odds":    fair_odds(p_ev),
+                "ev":           expected_value(p_ev, o),
+                "kelly_pct":    round(kelly_fraction(p_ev, o) * 100, 2),
+                "is_value":     expected_value(p_ev, o) > 0,
+            }
 
-    results = {}
-    for outcome in ["home", "draw", "away"]:
-        p_display = probs[outcome]          # לתצוגה — הסתברות Elo+Poisson
-        p_ev      = ev_probs.get(outcome, p_display)  # לEV — מודל טהור
-        o = odds.get(outcome, 0)
-        ev = expected_value(p_ev, o)        # EV מבוסס מודל טהור בלבד
-        k  = kelly_fraction(p_ev, o)
-        results[outcome] = {
-            "our_prob":     round(p_display * 100, 1),  # מה שמוצג למשתמש
-            "our_prob_raw": p_display,
-            "our_prob_ev":  round(p_ev * 100, 1),       # מה שמחשב EV
-            "odds":         o,
-            "implied_prob": round(implied_probability(o) * 100, 1),
-            "fair_odds":    fair_odds(p_ev),             # Fair Odds לפי מודל טהור
-            "ev":           ev,
-            "kelly_pct":    round(k * 100, 2),
-            "is_value":     ev > 0,
+        results["overround"]      = overround(odds.get("home",1), odds.get("draw",1), odds.get("away",1))
+        results["xg_home"]        = probs["xg_home"]
+        results["xg_away"]        = probs["xg_away"]
+        results["top_scores"]     = most_likely_scores(probs["score_matrix"])
+        results["has_draw"]       = True
+
+    else:
+        # ── ספורט 2-way — לוגיסטי ──────────────────────────────────────────
+        probs    = match_probabilities_2way(elo_home, elo_away, form_home, form_away)
+        outcomes = ["home", "away"]
+        ev_probs = pure_probs if pure_probs else probs
+
+        results = {}
+        for outcome in outcomes:
+            p_display = probs[outcome]
+            p_ev      = ev_probs.get(outcome, p_display)
+            o         = odds.get(outcome, 0)
+            results[outcome] = {
+                "our_prob":     round(p_display * 100, 1),
+                "our_prob_raw": p_display,
+                "our_prob_ev":  round(p_ev * 100, 1),
+                "odds":         o,
+                "implied_prob": round(implied_probability(o) * 100, 1),
+                "fair_odds":    fair_odds(p_ev),
+                "ev":           expected_value(p_ev, o),
+                "kelly_pct":    round(kelly_fraction(p_ev, o) * 100, 2),
+                "is_value":     expected_value(p_ev, o) > 0,
+            }
+        # draw placeholder ריק (לתאימות עם קוד קיים)
+        results["draw"] = {
+            "our_prob": 0.0, "our_prob_raw": 0.0, "our_prob_ev": 0.0,
+            "odds": 0, "implied_prob": 0.0, "fair_odds": 0.0,
+            "ev": 0.0, "kelly_pct": 0.0, "is_value": False,
         }
+        results["overround"] = overround(odds.get("home",1), 0, odds.get("away",1))
+        results["xg_home"]   = None
+        results["xg_away"]   = None
+        results["top_scores"]= []
+        results["has_draw"]  = False
 
-    results["overround"]     = overround(odds.get("home",1), odds.get("draw",1), odds.get("away",1))
-    results["xg_home"]       = probs["xg_home"]
-    results["xg_away"]       = probs["xg_away"]
-    results["top_scores"]    = most_likely_scores(probs["score_matrix"])
-    results["form_home"]     = round(form_home, 3)
-    results["form_away"]     = round(form_away, 3)
-    results["lineup_home"]   = round(lineup_home, 3)
-    results["lineup_away"]   = round(lineup_away, 3)
-    results["odds_freshness"]= odds_freshness(odds_updated_at)
-
+    results["form_home"]      = round(form_home, 3)
+    results["form_away"]      = round(form_away, 3)
+    results["lineup_home"]    = round(lineup_home, 3)
+    results["lineup_away"]    = round(lineup_away, 3)
+    results["odds_freshness"] = odds_freshness(odds_updated_at)
     return results
