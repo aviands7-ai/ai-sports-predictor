@@ -1,7 +1,6 @@
 """
 odds_api.py — The Odds API v4
-odds חיים מ-40+ אתרי הימורים בזמן אמת.
-תומך בכדורגל (3-way) וספורט ללא תיקו (2-way): טניס, בייסבול, כדורסל.
+דינמי לחלוטין: מגלה ענפי ספורט פעילים אוטומטית מה-API.
 """
 
 import os
@@ -13,81 +12,14 @@ load_dotenv()
 ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 BASE_URL     = "https://api.the-odds-api.com/v4"
 
-# ── כל ליגות הכדורגל + ענפי ספורט נוספים ────────────────────────────────────
-SPORT_KEYS = [
-    # טורנירים בינלאומיים
-    "soccer_fifa_world_cup",
-    "soccer_international",
-    "soccer_fifa_world_cup_qualifier_conmebol",
-
-    # ליגות כדורגל קיץ פעילות
-    "soccer_usa_mls",
-    "soccer_japan_j_league",
-    "soccer_brazil_campeonato",
-    "soccer_sweden_allsvenskan",
-    "soccer_norway_eliteserien",
-    "soccer_finland_veikkausliiga",
-
-    # ליגות כדורגל אירופה
-    "soccer_epl",
-    "soccer_spain_la_liga",
-    "soccer_germany_bundesliga",
-    "soccer_italy_serie_a",
-    "soccer_france_ligue_one",
-    "soccer_uefa_champs_league",
-    "soccer_uefa_europa_league",
-
-    # ספורט ללא תיקו (2-way markets)
-    "tennis_atp",
-    "tennis_wta",
-    "baseball_mlb",
-    "basketball_nba",
-    "basketball_euroleague",
-]
-
-# מיפוי sport_key → has_draw
-SPORT_KEY_HAS_DRAW = {
-    "soccer_fifa_world_cup":                   True,
-    "soccer_international":                    True,
-    "soccer_fifa_world_cup_qualifier_conmebol": True,
-    "soccer_usa_mls":                          True,
-    "soccer_japan_j_league":                   True,
-    "soccer_brazil_campeonato":                True,
-    "soccer_sweden_allsvenskan":               True,
-    "soccer_norway_eliteserien":               True,
-    "soccer_finland_veikkausliiga":            True,
-    "soccer_epl":                              True,
-    "soccer_spain_la_liga":                    True,
-    "soccer_germany_bundesliga":               True,
-    "soccer_italy_serie_a":                    True,
-    "soccer_france_ligue_one":                 True,
-    "soccer_uefa_champs_league":               True,
-    "soccer_uefa_europa_league":               True,
-    "tennis_atp":                              False,
-    "tennis_wta":                              False,
-    "baseball_mlb":                            False,
-    "basketball_nba":                          False,
-    "basketball_euroleague":                   False,
-}
-
 PREFERRED_BOOKMAKERS = [
     "pinnacle", "bet365", "williamhill",
     "unibet", "bwin", "draftkings", "fanduel",
 ]
 
+# ── cache של הספורט הפעיל (מתעדכן בכל הרצה) ─────────────────────────────────
+_SPORTS_CACHE: list[dict] = []
 
-# ─── המרת פורמט ────────────────────────────────────────────────────────────────
-
-def _to_decimal(odd) -> float:
-    """ממיר American Odds ל-Decimal אם צריך."""
-    odd = float(odd)
-    if odd == int(odd) and abs(odd) >= 100:
-        if odd > 0:  return round((odd / 100) + 1, 3)
-        else:        return round((100 / abs(odd)) + 1, 3)
-    return round(odd, 3)
-
-
-# ─── קריאת API ─────────────────────────────────────────────────────────────────
 
 def _get(endpoint: str, params: dict) -> list | dict | None:
     if not ODDS_API_KEY:
@@ -103,7 +35,7 @@ def _get(endpoint: str, params: dict) -> list | dict | None:
             print("[OddsAPI] ❌ API Key לא תקין", flush=True)
             return None
         if res.status_code == 422:
-            return None   # sport key לא קיים — ממשיך לבא
+            return None
         if res.status_code == 429:
             print("[OddsAPI] ❌ חרגת ממכסה", flush=True)
             return None
@@ -115,15 +47,70 @@ def _get(endpoint: str, params: dict) -> list | dict | None:
         return None
 
 
+def _sport_has_draw(sport_key: str) -> bool:
+    """
+    מזהה אוטומטית אם ענף ספורט כולל תיקו.
+    כדורגל תמיד 3-way. כל שאר ברירת מחדל 2-way.
+    """
+    return sport_key.startswith("soccer_")
+
+
+def get_all_available_sports() -> list[dict]:
+    """
+    מגלה דינמית את כל ענפי הספורט הפעילים ב-The Odds API.
+    מחזיר רשימת:
+      [{"key": str, "title": str, "has_draw": bool, "active": bool}, ...]
+
+    מסנן רק ספורט פעיל (active=True).
+    """
+    global _SPORTS_CACHE
+    data = _get("sports", {"all": "false"})  # רק ספורט פעיל
+
+    if not data or not isinstance(data, list):
+        print("[OddsAPI] ⚠️ לא ניתן לטעון רשימת ספורט", flush=True)
+        return _SPORTS_CACHE  # fallback לcache
+
+    sports = []
+    for s in data:
+        if not s.get("active", False):
+            continue
+        key      = s.get("key", "")
+        has_draw = _sport_has_draw(key)
+        sports.append({
+            "key":       key,
+            "title":     s.get("title", key),
+            "group":     s.get("group", ""),
+            "has_draw":  has_draw,
+        })
+
+    print(f"[OddsAPI] נמצאו {len(sports)} ענפי ספורט פעילים", flush=True)
+    soccer_count = sum(1 for s in sports if s["has_draw"])
+    other_count  = len(sports) - soccer_count
+    print(f"[OddsAPI]   כדורגל (3-way): {soccer_count} | ספורט אחר (2-way): {other_count}", flush=True)
+
+    _SPORTS_CACHE = sports
+    return sports
+
+
+def _to_decimal(odd) -> float:
+    odd = float(odd)
+    if odd == int(odd) and abs(odd) >= 100:
+        if odd > 0: return round((odd / 100) + 1, 3)
+        else:       return round((100 / abs(odd)) + 1, 3)
+    return round(odd, 3)
+
+
 def _get_events() -> list:
     """
-    מנסה כל sport key ואוסף משחקים מכל הליגות.
-    כל event מתויג ב-sport_key ו-has_draw לזיהוי אוטומטי.
+    מגלה דינמית את כל ענפי הספורט הפעילים ואוסף משחקים מכולם.
+    כל event מתויג _sport_key ו-_has_draw לזיהוי אוטומטי.
     """
+    sports     = get_all_available_sports()
     all_events = {}
 
-    for sport_key in SPORT_KEYS:
-        has_draw = SPORT_KEY_HAS_DRAW.get(sport_key, True)
+    for sport_info in sports:
+        sport_key = sport_info["key"]
+        has_draw  = sport_info["has_draw"]
 
         # EU/UK — Decimal
         data = _get(f"sports/{sport_key}/odds", {
@@ -141,7 +128,7 @@ def _get_events() -> list:
                     all_events[eid] = event
             continue
 
-        # US — American (עם המרה)
+        # US — American
         data = _get(f"sports/{sport_key}/odds", {
             "regions":    "us",
             "markets":    "h2h",
@@ -158,13 +145,11 @@ def _get_events() -> list:
 
     result = list(all_events.values())
     if not result:
-        print("[OddsAPI] ⚠️ לא נמצאו משחקים בשום sport key", flush=True)
+        print("[OddsAPI] ⚠️ לא נמצאו משחקים", flush=True)
     else:
-        print(f"[OddsAPI] סה\"כ: {len(result)} משחקים ייחודיים מכל הליגות", flush=True)
+        print(f"[OddsAPI] סה\"כ: {len(result)} משחקים ייחודיים", flush=True)
     return result
 
-
-# ─── חיפוש משחק ───────────────────────────────────────────────────────────────
 
 def _find_event(data: list, home_team: str, away_team: str) -> dict | None:
     home_words = set(home_team.lower().split())
@@ -182,17 +167,16 @@ def _find_event(data: list, home_team: str, away_team: str) -> dict | None:
 def list_available_matches() -> list[str]:
     data = _get_events()
     return [
-        f"{e.get('home_team')} vs {e.get('away_team')} ({e.get('_sport_key','?')}) {e.get('commence_time','')[:10]}"
+        f"{e.get('home_team')} vs {e.get('away_team')} "
+        f"({e.get('_sport_key','?')}) {e.get('commence_time','')[:10]}"
         for e in data
     ]
 
 
-# ─── שליפת Odds ────────────────────────────────────────────────────────────────
-
 def _extract_odds(event: dict) -> list[dict]:
     """
     מחלץ odds מכל הבוקמייקרים.
-    תומך ב-3-way (עם "draw") וב-2-way (ללא "draw").
+    תומך אוטומטית ב-3-way (עם draw) וב-2-way (ללא draw).
     """
     all_books      = []
     home_team_name = event.get("home_team", "").lower()
@@ -207,12 +191,11 @@ def _extract_odds(event: dict) -> list[dict]:
             if market["key"] != "h2h":
                 continue
 
-            outcomes   = {o["name"].lower(): o["price"] for o in market["outcomes"]}
-            raw_home   = outcomes.get(home_team_name)
-            raw_away   = outcomes.get(away_team_name)
-            raw_draw   = outcomes.get("draw")
+            outcomes = {o["name"].lower(): o["price"] for o in market["outcomes"]}
+            raw_home = outcomes.get(home_team_name)
+            raw_away = outcomes.get(away_team_name)
+            raw_draw = outcomes.get("draw")
 
-            # 2-way: draw לא נדרש
             if has_draw:
                 if not (raw_home and raw_away and raw_draw):
                     continue
@@ -224,11 +207,8 @@ def _extract_odds(event: dict) -> list[dict]:
             away_d = _to_decimal(raw_away)
             draw_d = _to_decimal(raw_draw) if raw_draw else 0.0
 
-            # סינון ערכים חריגים
-            vals_to_check = [home_d, away_d]
-            if has_draw and draw_d > 0:
-                vals_to_check.append(draw_d)
-            if any(x < 1.01 or x > 50 for x in vals_to_check):
+            vals = [home_d, away_d] + ([draw_d] if has_draw and draw_d > 0 else [])
+            if any(x < 1.01 or x > 50 for x in vals):
                 continue
 
             all_books.append({
@@ -278,7 +258,6 @@ def get_live_odds(home_team: str, away_team: str) -> dict | None:
 
 
 def get_best_odds(home_team: str, away_team: str) -> dict | None:
-    """Best Line — היחס הטוב ביותר לכל תוצאה מכל הבוקמייקרים."""
     result = get_live_odds(home_team, away_team)
     if not result or not result.get("all_books"):
         return result
@@ -304,9 +283,8 @@ def get_best_odds(home_team: str, away_team: str) -> dict | None:
 
 def get_all_odds_batch() -> dict:
     """
-    קריאת Odds אחת לכל המשחקים מכל הליגות.
-    מחזיר מילון {(home_team, away_team): odds_dict}.
-    כל ערך כולל has_draw לזיהוי אוטומטי בengine.
+    קריאה דינמית אחת לכל ענפי הספורט הפעילים.
+    מחזיר מילון {(home_team, away_team): odds_dict} עם has_draw.
     """
     data = _get_events()
     if not data:
