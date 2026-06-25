@@ -355,6 +355,13 @@ with tab_intel:
 
             # הסתברויות
             st.markdown("#### 📊 הסתברויות")
+            elo_conf = analysis.get("elo_confidence", 1.0)
+            if elo_conf < 0.7:
+                st.warning(
+                    f"⚠️ **Elo טרם התכנס** — ביטחון מודל: {elo_conf:.0%}. "
+                    f"EV ו-Kelly מוקטנים אוטומטית (Shrinkage). "
+                    f"נדרשים עוד משחקים לדיוק מלא."
+                )
             outcomes = ["home","away"] if not has_draw else ["home","draw","away"]
             outcome_labels = {
                 "home": home["name"], "draw": "תיקו", "away": away["name"]
@@ -486,10 +493,14 @@ with tab_value:
             outcome_labels = {
                 "home": h["name"], "draw": "תיקו", "away": a["name"]
             }
+            elo_confidence = an.get("elo_confidence", 1.0)
             for outcome in outcomes:
                 ev     = an[outcome].get("ev", 0) or 0
                 kelly  = an[outcome].get("kelly_pct", 0) or 0
                 if ev > 0.03:
+                    # ⚠️ Low Confidence Warning — מונע Value Bets מוקדמים/מנופחים
+                    if elo_confidence < 0.5:
+                        continue  # מסנן Value Bets של קבוצות שטרם התכנסו
                     value_rows.append({
                         "תאריך":    f["fixture"]["date"][:10],
                         "ענף":      sport_disp,
@@ -499,6 +510,7 @@ with tab_value:
                         "סיכוי %":  an[outcome].get("our_prob", 0),
                         "EV":       f"+{ev:.1%}",
                         "Kelly %":  f"{kelly:.1f}%",
+                        "Elo ביטחון": f"{elo_confidence:.0%}",
                     })
 
         progress.empty()
