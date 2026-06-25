@@ -1,6 +1,6 @@
 """
-api_client.py — גישה ל-Football API v3
-סורק את כל משחקי הכדורגל הפעילים בעולם (לא רק מונדיאל).
+api_client.py — גישה ל-Football API v4
+דינמי לחלוטין: מגלה ליגות פעילות אוטומטית מה-API.
 """
 
 import os
@@ -15,29 +15,11 @@ API_KEY  = os.getenv("SPORTS_API_KEY")
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS  = {"x-apisports-key": API_KEY}
 
-# ── מונדיאל 2026 — נשמר לשאילתות ממוקדות ──────────────────────────────────────
+# ── מונדיאל 2026 — תמיד נכלל (גם בין עונות) ─────────────────────────────────
 WC_LEAGUE_ID = 1
 WC_SEASON    = 2026
 WC_FROM      = "2026-06-11"
 WC_TO        = "2026-07-19"
-
-# ── ליגות ידועות עם עונה — לסריקת 7 ימים קדימה ──────────────────────────────
-KNOWN_LEAGUES = {
-    1:    2026,   # FIFA World Cup
-    253:  2026,   # MLS
-    98:   2026,   # J-League
-    71:   2026,   # Brasileirão
-    113:  2026,   # Allsvenskan
-    103:  2026,   # Eliteserien
-    244:  2026,   # Veikkausliiga
-    2:    2025,   # Champions League
-    3:    2025,   # Europa League
-    39:   2025,   # Premier League
-    140:  2025,   # La Liga
-    78:   2025,   # Bundesliga
-    135:  2025,   # Serie A
-    61:   2025,   # Ligue 1
-}
 
 
 def _get(endpoint: str, params: dict, retries: int = 3) -> dict:
@@ -62,20 +44,56 @@ def _get(endpoint: str, params: dict, retries: int = 3) -> dict:
     return {}
 
 
+def get_all_active_leagues() -> list[dict]:
+    """
+    מגלה דינמית את כל ליגות הכדורגל הפעילות כרגע.
+    פונה ל-/leagues?current=true ומחזיר רשימת:
+      [{"id": int, "season": int, "name": str, "country": str}, ...]
+
+    מוגבל ל-100 ליגות עם מספר משחקים גדול מ-0 כדי לחסוך קריאות API.
+    """
+    data = _get("leagues", {"current": "true", "type": "League"})
+    leagues = []
+
+    for item in data.get("response", []):
+        league  = item.get("league", {})
+        seasons = item.get("seasons", [])
+
+        # מצא את העונה הנוכחית
+        current_season = None
+        for s in seasons:
+            if s.get("current"):
+                current_season = s.get("year")
+                break
+
+        if not current_season:
+            continue
+
+        leagues.append({
+            "id":      league.get("id"),
+            "name":    league.get("name", ""),
+            "country": item.get("country", {}).get("name", ""),
+            "season":  current_season,
+        })
+
+    print(f"[API] נמצאו {len(leagues)} ליגות פעילות", flush=True)
+    return leagues
+
+
 def get_all_fixtures() -> list[dict]:
     """
     מושך את כל משחקי הכדורגל הפעילים בעולם.
-    שיטה 1: כל משחקי היום לפי תאריך (כולל ליגות לא ידועות).
-    שיטה 2: מונדיאל 2026 — כל הטורניר (משחקים עתידיים).
-    שיטה 3: ליגות ידועות — 7 ימים קדימה.
+
+    שלב 1: כל משחקי היום (כולל כל ליגה שמשחקת היום).
+    שלב 2: מונדיאל 2026 — כל הטורניר.
+    שלב 3: ליגות פעילות דינמיות — 7 ימים קדימה.
     מסנן כפילויות לפי fixture_id.
     """
     today     = date.today().strftime("%Y-%m-%d")
     next_week = (date.today() + timedelta(days=7)).strftime("%Y-%m-%d")
-
     all_fixtures = {}
 
-    # ── שיטה 1: כל המשחקים של היום ─────────────────────────────────────────
+    # ── שלב 1: כל משחקי היום ────────────────────────────────────────────────
     data = _get("fixtures", {
         "date":   today,
         "status": "NS-1H-HT-2H-ET-BT-P-FT-AET-PEN",
@@ -83,9 +101,9 @@ def get_all_fixtures() -> list[dict]:
     for f in data.get("response", []):
         fid = f["fixture"]["id"]
         all_fixtures[fid] = f
-    print(f"[API] שיטה 1 (כל היום): {len(all_fixtures)} משחקים", flush=True)
+    print(f"[API] שלב 1 (היום): {len(all_fixtures)} משחקים", flush=True)
 
-    # ── שיטה 2: מונדיאל 2026 — כל הטורניר ──────────────────────────────────
+    # ── שלב 2: מונדיאל 2026 — כל הטורניר ───────────────────────────────────
     wc_data = _get("fixtures", {
         "league": WC_LEAGUE_ID,
         "season": WC_SEASON,
@@ -98,15 +116,21 @@ def get_all_fixtures() -> list[dict]:
         if fid not in all_fixtures:
             all_fixtures[fid] = f
             wc_added += 1
-    print(f"[API] שיטה 2 (מונדיאל): +{wc_added} משחקים", flush=True)
+    print(f"[API] שלב 2 (מונדיאל): +{wc_added} משחקים", flush=True)
 
-    # ── שיטה 3: ליגות ידועות — 7 ימים קדימה ────────────────────────────────
-    extra_added = 0
-    for league_id, season in KNOWN_LEAGUES.items():
-        if league_id == WC_LEAGUE_ID:
-            continue  # כבר נמשך
+    # ── שלב 3: ליגות פעילות דינמיות — 7 ימים קדימה ─────────────────────────
+    active_leagues = get_all_active_leagues()
+    dynamic_added  = 0
+
+    for league_info in active_leagues:
+        lid    = league_info["id"]
+        season = league_info["season"]
+
+        if lid == WC_LEAGUE_ID:
+            continue  # כבר נמשך בשלב 2
+
         ldata = _get("fixtures", {
-            "league": league_id,
+            "league": lid,
             "season": season,
             "from":   today,
             "to":     next_week,
@@ -115,8 +139,9 @@ def get_all_fixtures() -> list[dict]:
             fid = f["fixture"]["id"]
             if fid not in all_fixtures:
                 all_fixtures[fid] = f
-                extra_added += 1
-    print(f"[API] שיטה 3 (ליגות ידועות): +{extra_added} משחקים", flush=True)
+                dynamic_added += 1
+
+    print(f"[API] שלב 3 (דינמי, {len(active_leagues)} ליגות): +{dynamic_added} משחקים", flush=True)
 
     fixtures = list(all_fixtures.values())
     fixtures.sort(key=lambda x: x["fixture"]["timestamp"])
@@ -151,10 +176,9 @@ def get_odds(fixture_id: int) -> dict | None:
         bookmakers    = response_item["bookmakers"]
         updated_at    = response_item.get("update", None)
 
-        # מעדיף Pinnacle (ID 4), אחרת ראשון
         target = None
         for bm in bookmakers:
-            if bm["id"] == 4:
+            if bm["id"] == 4:  # Pinnacle
                 target = bm
                 break
         if not target:
@@ -164,12 +188,9 @@ def get_odds(fixture_id: int) -> dict | None:
             if bet["id"] == 1:  # Match Winner
                 result = {}
                 for v in bet["values"]:
-                    if v["value"] == "Home":
-                        result["home"] = float(v["odd"])
-                    elif v["value"] == "Draw":
-                        result["draw"] = float(v["odd"])
-                    elif v["value"] == "Away":
-                        result["away"] = float(v["odd"])
+                    if v["value"] == "Home":   result["home"] = float(v["odd"])
+                    elif v["value"] == "Draw": result["draw"] = float(v["odd"])
+                    elif v["value"] == "Away": result["away"] = float(v["odd"])
                 if len(result) == 3:
                     result["updated_at"] = updated_at
                     result["bookmaker"]  = target.get("name", "Unknown")
@@ -188,7 +209,6 @@ def get_head_to_head(team1_id: int, team2_id: int, last: int = 10) -> list[dict]
 
 
 def get_team_last_matches(team_id: int, last: int = 5) -> list[dict]:
-    """שואב 5 משחקים אחרונים שהסתיימו."""
     data = _get("fixtures", {
         "team":   team_id,
         "last":   last,
