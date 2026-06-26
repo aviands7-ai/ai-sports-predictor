@@ -317,7 +317,7 @@ def get_all_odds_batch() -> dict:
 
         valid = [
             b for b in books
-            if 1.01 <= b["home"] <= 25 and 1.01 <= b["away"] <= 25
+            if 1.01 <= b["home"] <= 100 and 1.01 <= b["away"] <= 100
             and (not has_draw or 1.01 <= b["draw"] <= 25)
         ]
         if not valid:
