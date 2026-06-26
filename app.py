@@ -43,6 +43,42 @@ from ensemble import ensemble_probabilities
 from calibration import run_calibration_check
 
 
+# ── games_played cache (session-level) ───────────────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_games_played_cache() -> dict:
+    """
+    טוען מ-Supabase את מספר המשחקים האמיתי לכל קבוצה.
+    משמש ל-Elo Confidence Discount — מונע EV מנופח לקבוצות שטרם התכנסו.
+    Cache יומי — קריאה אחת בלבד לסשן.
+    """
+    try:
+        from supabase import create_client
+        db  = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+        res = db.rpc("get_team_games_played").execute()
+        if res.data:
+            return {row["team_id"]: row["games_played"] for row in res.data}
+    except Exception:
+        pass
+    # Fallback: ספור ידני מטבלת matches
+    try:
+        from supabase import create_client
+        db   = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+        res  = db.table("matches").select("home_team_id, away_team_id").execute()
+        from collections import Counter
+        counts: Counter = Counter()
+        for row in (res.data or []):
+            if row.get("home_team_id"): counts[row["home_team_id"]] += 1
+            if row.get("away_team_id"): counts[row["away_team_id"]] += 1
+        return dict(counts)
+    except Exception:
+        return {}
+
+
+def get_games_played(team_id: int, cache: dict) -> int:
+    """מחזיר מספר משחקים אמיתי מה-cache, או -1 אם לא ידוע (proxy יופעל)."""
+    return cache.get(team_id, -1)
+
+
 # ── מיפוי sport_key → תווית עברית ────────────────────────────────────────────
 SPORT_LABELS = {
     "soccer_fifa_world_cup":    "⚽ מונדיאל 2026",
@@ -453,6 +489,9 @@ with tab_value:
         current_rho = get_current_rho()
         progress = st.progress(0)
 
+        # טוען games_played אמיתי מ-Supabase — פעם אחת לכל הסריקה
+        gp_cache = _load_games_played_cache()
+
         for i, f in enumerate(upcoming):
             progress.progress((i + 1) / max(len(upcoming), 1))
             h = f["teams"]["home"]
@@ -478,11 +517,17 @@ with tab_value:
             elo_h = get_team_elo(h["id"])
             elo_a = get_team_elo(a["id"])
 
+            # games_played אמיתי — מונע EV מנופח לקבוצות עם FIFA Starting Elo גבוה
+            gp_h = get_games_played(h["id"], gp_cache)
+            gp_a = get_games_played(a["id"], gp_cache)
+
             an = full_match_analysis(
                 elo_h, elo_a, odds,
                 home_advantage=0.0,
                 rho=current_rho,
                 has_draw=has_draw,
+                games_home=gp_h,
+                games_away=gp_a,
             )
 
             league_name = f.get("league",{}).get("name","")
@@ -494,13 +539,27 @@ with tab_value:
                 "home": h["name"], "draw": "תיקו", "away": a["name"]
             }
             elo_confidence = an.get("elo_confidence", 1.0)
+            # מינימום משחקים לכניסה לסריקה — מונע EV מנופח לחלוטין
+            MIN_GAMES_FOR_VB = 10
+            gp_min = min(
+                gp_h if gp_h >= 0 else 0,
+                gp_a if gp_a >= 0 else 0,
+            )
+            if gp_min < MIN_GAMES_FOR_VB:
+                continue  # קבוצה עם פחות מ-10 משחקים — לא מהימנה לסריקה
+
+            # Hard Cap על EV — EV מעל 40% הוא כמעט תמיד סימן לחוסר התכנסות
+            EV_HARD_CAP = 0.40
+
             for outcome in outcomes:
                 ev     = an[outcome].get("ev", 0) or 0
                 kelly  = an[outcome].get("kelly_pct", 0) or 0
-                if ev > 0.03:
-                    # ⚠️ Low Confidence Warning — מונע Value Bets מוקדמים/מנופחים
-                    if elo_confidence < 0.5:
-                        continue  # מסנן Value Bets של קבוצות שטרם התכנסו
+                if ev <= 0.03:
+                    continue
+                if ev > EV_HARD_CAP:
+                    continue  # EV לא ריאלי — חוסר התכנסות Elo
+                if elo_confidence < 0.5:
+                    continue  # confidence נמוך — Shrinkage לא מספיק
                     value_rows.append({
                         "תאריך":    f["fixture"]["date"][:10],
                         "ענף":      sport_disp,
