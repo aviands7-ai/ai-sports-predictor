@@ -319,21 +319,6 @@ def get_all_odds_batch() -> dict:
         a        = event.get("away_team", "")
         has_draw = event.get("_has_draw", False)
         books    = _extract_odds(event)
-        # DEBUG NFL
-        if event.get("_sport_key","").startswith("americanfootball_nfl") and not books:
-            print(f"[DEBUG] NFL no books: {event.get('home_team')} vs {event.get('away_team')}", flush=True)
-            print(f"[DEBUG] _has_draw={event.get('_has_draw')} bookmakers={len(event.get('bookmakers',[]))}", flush=True)
-            # try manual extract
-            for bm in event.get("bookmakers",[])[:1]:
-                for mkt in bm.get("markets",[]):
-                    if mkt["key"]=="h2h":
-                        outcomes = mkt.get("outcomes",[])
-                        hn = event.get("home_team","").lower()
-                        an = event.get("away_team","").lower()
-                        out_names = {o["name"].lower():o["price"] for o in outcomes}
-                        print(f"[DEBUG] home_key={hn!r} away_key={an!r}", flush=True)
-                        print(f"[DEBUG] outcome_keys={list(out_names.keys())}", flush=True)
-                        print(f"[DEBUG] home match={out_names.get(hn)} away match={out_names.get(an)}", flush=True)
         if not books:
             continue
 
@@ -364,22 +349,6 @@ def get_all_odds_batch() -> dict:
 
         batch[(h, a)]                 = odds_result
         batch[(h.lower(), a.lower())] = odds_result
-
-    # DEBUG — show NFL events bookmakers
-    nfl_events = [e for e in data if e.get("_sport_key","").startswith("americanfootball_nfl")]
-    if nfl_events:
-        e = nfl_events[0]
-        books = e.get("bookmakers", [])
-        print(f"[OddsAPI DEBUG] NFL event: {e.get('home_team')} vs {e.get('away_team')}", flush=True)
-        print(f"[OddsAPI DEBUG] bookmakers count: {len(books)}", flush=True)
-        if books:
-            b = books[0]
-            print(f"[OddsAPI DEBUG] first book: {b.get('key')} markets: {[m['key'] for m in b.get('markets',[])]}",flush=True)
-            for m in b.get('markets',[]):
-                if m['key']=='h2h':
-                    print(f"[OddsAPI DEBUG] h2h outcomes: {[(o['name'],o['price']) for o in m.get('outcomes',[])]}", flush=True)
-    else:
-        print("[OddsAPI DEBUG] ❌ אין NFL events בכלל אחרי _get_events!", flush=True)
 
     print(f"[OddsAPI] Batch: {len(data)} משחקים → {len(batch)//2} עם odds", flush=True)
     return batch
