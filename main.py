@@ -359,5 +359,151 @@ def _process_match(match: dict, verbose: bool,
     return "ok"
 
 
+def run_non_football_pipeline(verbose: bool = True):
+    """
+    Pipeline לספורט לא-כדורגל (NBA, NHL, Tennis, MLB, MMA, Boxing וכו').
+    עובד ישירות מה-Odds Batch — ללא Football API בכלל.
+    שומר predictions ב-Supabase לשימוש ב-Value Bets scan.
+
+    ספורטים מכוסים: כל מה ש-Odds API מחזיר שאינו כדורגל.
+    """
+    from engine import detect_sport_from_key, sport_has_draw, SPORT_KEY_MAP
+
+    if verbose:
+        print("\n🏀 Non-Football Pipeline — NBA/NHL/Tennis/MLB/MMA...", flush=True)
+
+    if is_odds_blocked():
+        print("[NFP] ⛔ Odds API חסום — מדלג", flush=True)
+        return
+
+    # ── Odds Batch — כבר נטען ב-run_pipeline, אבל נשלוף מחדש (cache) ────────
+    odds_batch = get_all_odds_batch()
+    if not odds_batch:
+        print("[NFP] ⚠️ Odds Batch ריק", flush=True)
+        return
+
+    gp_cache = _load_games_played()
+    rho      = _CURRENT_RHO
+    count    = 0
+    skipped  = 0
+
+    # עובר על כל האירועים ב-Batch שאינם כדורגל
+    seen_pairs: set = set()
+
+    for (home_name, away_name), odds_data in odds_batch.items():
+        # הבatch מכיל כל זוג פעמיים (lower + original) — נעבד רק פעם אחת
+        if (home_name, away_name) != (home_name.lower(), away_name.lower()):
+            continue  # דלג על הגרסה הלא-lower
+
+        sport_key = odds_data.get("sport_key", "")
+        if not sport_key:
+            continue
+
+        # דלג על כדורגל — מטופל ב-run_pipeline
+        if sport_key.startswith("soccer_"):
+            continue
+
+        # ודא שה-sport_key מוכר
+        sport = detect_sport_from_key(sport_key)
+        has_draw = sport_has_draw(sport)  # כמעט תמיד False לספורט לא-כדורגל
+
+        pair_key = f"{home_name}::{away_name}::{sport_key}"
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
+
+        # odds
+        if has_draw:
+            odds = {k: odds_data.get(k) for k in ["home","draw","away"] if odds_data.get(k)}
+            if not all(odds.get(k) and 1.01 <= odds[k] <= 50 for k in ["home","draw","away"]):
+                skipped += 1
+                continue
+        else:
+            odds = {k: odds_data.get(k) for k in ["home","away"] if odds_data.get(k)}
+            if not all(odds.get(k) and 1.01 <= odds[k] <= 50 for k in ["home","away"]):
+                skipped += 1
+                continue
+
+        # Elo — מחפש ב-DB, אחרת 1400 ברירת מחדל
+        # לספורט לא-כדורגל אין team_id מ-Football API → משתמש בשם
+        try:
+            from supabase import create_client
+            import os, hashlib
+            db = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+            # team_id = hash של שם הקבוצה (עקבי בין הרצות)
+            home_id = int(hashlib.md5(home_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
+            away_id = int(hashlib.md5(away_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
+
+            elo_h = get_team_elo(home_id, default=None)
+            elo_a = get_team_elo(away_id, default=None)
+
+            if elo_h is None:
+                elo_h = get_starting_elo(home_name)
+                upsert_team(home_id, home_name, elo=elo_h)
+            if elo_a is None:
+                elo_a = get_starting_elo(away_name)
+                upsert_team(away_id, away_name, elo=elo_a)
+        except Exception:
+            elo_h = elo_a = 1400.0
+            home_id = away_id = 0
+
+        gp_h = gp_cache.get(home_id, -1)
+        gp_a = gp_cache.get(away_id, -1)
+
+        analysis = full_match_analysis(
+            elo_h, elo_a, odds,
+            home_advantage=0.0,
+            rho=rho,
+            has_draw=has_draw,
+            games_home=gp_h,
+            games_away=gp_a,
+        )
+
+        fixture_id = abs(hash(f"{home_name}{away_name}{sport_key}")) % 2_000_000_000
+
+        pred = {
+            "home_team_name":     home_name,
+            "away_team_name":     away_name,
+            "match_date":         odds_data.get("last_update", ""),
+            "home_team_id":       home_id,
+            "away_team_id":       away_id,
+            "elo_home":           elo_h,
+            "elo_away":           elo_a,
+            "has_draw":           has_draw,
+            "league_id":          0,
+            "prob_home":          analysis["home"]["our_prob_raw"],
+            "prob_draw":          analysis["draw"]["our_prob_raw"],
+            "prob_away":          analysis["away"]["our_prob_raw"],
+            "prob_elo_home":      analysis["home"]["our_prob_raw"],
+            "prob_elo_draw":      analysis["draw"]["our_prob_raw"],
+            "prob_elo_away":      analysis["away"]["our_prob_raw"],
+            "odds_home":          odds.get("home"),
+            "odds_draw":          odds.get("draw"),
+            "odds_away":          odds.get("away"),
+            "odds_bookmaker":     odds_data.get("home_book", "Best Line"),
+            "ev_home":            analysis["home"]["ev"],
+            "ev_draw":            analysis["draw"]["ev"],
+            "ev_away":            analysis["away"]["ev"],
+            "kelly_home":         analysis["home"]["kelly_pct"],
+            "kelly_draw":         analysis["draw"]["kelly_pct"],
+            "kelly_away":         analysis["away"]["kelly_pct"],
+            "overround":          analysis.get("overround"),
+            "status":             "NS",
+            "sport_key":          sport_key,
+        }
+
+        log_prediction(fixture_id, pred)
+        count += 1
+
+    if verbose:
+        print(f"[NFP] ✅ {count} אירועים נשמרו | {skipped} דולגו (odds לא תקינים)", flush=True)
+        sports_found = set(
+            v.get("sport_key","") for v in odds_batch.values()
+            if not v.get("sport_key","").startswith("soccer_")
+        )
+        print(f"[NFP] ענפים: {', '.join(sorted(sports_found))}", flush=True)
+
+
 if __name__ == "__main__":
     run_pipeline(verbose=True)
+    run_non_football_pipeline(verbose=True)
