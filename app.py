@@ -530,12 +530,12 @@ with tab_value:
                 has_draw = live.get("has_draw", has_draw)
                 if has_draw:
                     odds = {k: live.get(k) for k in ["home","draw","away"] if live.get(k)}
-                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 25
+                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 100
                                for k in ["home","draw","away"]):
                         continue
                 else:
                     odds = {k: live.get(k) for k in ["home","away"] if live.get(k)}
-                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 25
+                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 100
                                for k in ["home","away"]):
                         continue
 
@@ -596,6 +596,7 @@ with tab_value:
         st.session_state["last_value_bets"] = [
             {
                 "תאריך":    r["תאריך"],
+                "ענף":      r.get("ענף", ""),
                 "משחק":     r["משחק"],
                 "הימור על": r["הימור על"],
                 "Odds":     r["Odds"],
@@ -906,11 +907,17 @@ with tab_paper:
         match_val = pt_match or auto_match
         bet_val   = pt_bet   or auto_bet
         if match_val and bet_val and pt_stake > 0:
+            # שלוף sport מה-VB אם נבחר
+            _vb_sport = ""
+            if selected_vb != "— הזן ידנית —" and selected_vb in vb_map:
+                _vb_sport = vb_map[selected_vb].get("ענף", "")
+
             new_trade = {
                 "id":         str(uuid.uuid4()),
                 "date":       pt_date or auto_date,
                 "match":      match_val,
                 "bet":        bet_val,
+                "sport":      _vb_sport,
                 "kelly_pct":  float(pt_kelly),
                 "stake":      float(pt_stake),
                 "exec_odds":  float(pt_odds),
@@ -944,6 +951,7 @@ with tab_paper:
             rows_display.append({
                 "_id": t["id"], "_obj": t,
                 "תאריך":    t.get("date",""),
+                "ענף":      t.get("sport",""),
                 "משחק":     t.get("match",""),
                 "הימור על": t.get("bet",""),
                 "Kelly %":  f"{t.get('kelly_pct',0):.1f}%",
@@ -954,8 +962,8 @@ with tab_paper:
                 "bankroll": running,
             })
 
-        hcols = st.columns([1.4,2.5,1.5,0.7,0.7,0.85,1.3,0.8,1.0,0.45])
-        for col, lbl in zip(hcols, ["תאריך","משחק","הימור","Kelly","₪","Odds","סטטוס","P&L","Bankroll","🗑"]):
+        hcols = st.columns([1.2,1.0,2.2,1.4,0.65,0.65,0.85,1.3,0.8,1.0,0.45])
+        for col, lbl in zip(hcols, ["תאריך","ענף","משחק","הימור","Kelly","₪","Odds","סטטוס","P&L","Bankroll","🗑"]):
             col.markdown(f"**{lbl}**")
 
         for row in rows_display:
@@ -963,15 +971,16 @@ with tab_paper:
             tobj = row["_obj"]
             locked = tobj["status"] != "ממתין"
 
-            cols = st.columns([1.4,2.5,1.5,0.7,0.7,0.85,1.3,0.8,1.0,0.45])
+            cols = st.columns([1.2,1.0,2.2,1.4,0.65,0.65,0.85,1.3,0.8,1.0,0.45])
             cols[0].caption(row["תאריך"])
-            cols[1].caption(row["משחק"])
-            cols[2].caption(row["הימור על"])
-            cols[3].caption(row["Kelly %"])
-            cols[4].caption(f"₪{row['סכום']:.1f}")
+            cols[1].caption(row.get("ענף",""))
+            cols[2].caption(row["משחק"])
+            cols[3].caption(row["הימור על"])
+            cols[4].caption(row["Kelly %"])
+            cols[5].caption(f"₪{row['סכום']:.1f}")
 
             if not locked:
-                new_odds = cols[5].number_input(
+                new_odds = cols[6].number_input(
                     "Odds", value=float(tobj.get("exec_odds",2.0)),
                     min_value=1.01, max_value=200.0, step=0.05, format="%.2f",
                     key=f"odds_{tid}", label_visibility="collapsed",
@@ -981,10 +990,10 @@ with tab_paper:
                     save_trade(tobj)
                     st.rerun()
             else:
-                cols[5].caption(f"{row['exec_odds']:.2f} 🔒")
+                cols[6].caption(f"{row['exec_odds']:.2f} 🔒")
 
             status_opts = ["ממתין","זכה","הפסיד"]
-            new_status = cols[6].selectbox(
+            new_status = cols[7].selectbox(
                 "סטטוס", options=status_opts,
                 index=status_opts.index(tobj["status"]),
                 key=f"status_{tid}", label_visibility="collapsed",
@@ -995,12 +1004,12 @@ with tab_paper:
                 st.rerun()
 
             pnl = row["pnl"]
-            if pnl > 0:   cols[7].markdown(f"**:green[+{pnl:.1f}]**")
-            elif pnl < 0: cols[7].markdown(f"**:red[{pnl:.1f}]**")
-            else:         cols[7].caption("—")
+            if pnl > 0:   cols[8].markdown(f"**:green[+{pnl:.1f}]**")
+            elif pnl < 0: cols[8].markdown(f"**:red[{pnl:.1f}]**")
+            else:         cols[8].caption("—")
 
-            cols[8].caption(f"₪{row['bankroll']:.1f}")
-            if cols[9].button("🗑", key=f"del_{tid}"):
+            cols[9].caption(f"₪{row['bankroll']:.1f}")
+            if cols[10].button("🗑", key=f"del_{tid}"):
                 delete_trade(tid)
                 st.rerun()
 
