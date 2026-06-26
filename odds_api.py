@@ -194,14 +194,19 @@ def _get_events() -> list:
         ck = f"events_{sport_key}"
 
         # EU/UK — Decimal (כדורגל + ספורט בינלאומי)
+        # לא שומרים cache אם אין bookmakers — כדי לאפשר fallback ל-US
         data = _get(f"sports/{sport_key}/odds", {
             "regions":    "eu,uk",
             "markets":    "h2h",
             "oddsFormat": "decimal",
-        }, cache_key=ck)
+        }, cache_key="")  # ללא cache — מונע שמירת נתונים ריקים
+
+        has_eu_books = bool(data and any(e.get("bookmakers") for e in data))
+        if has_eu_books:
+            _cache_set(ck, data)  # שמור cache רק אם יש bookmakers
 
         # אם אין bookmakers אירופאיים — נסה US (NFL/MLB/NBA/MMA)
-        if not data or not any(e.get("bookmakers") for e in data):
+        if not has_eu_books:
             data_us = _get(f"sports/{sport_key}/odds", {
                 "regions":    "us",
                 "markets":    "h2h",
