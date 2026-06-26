@@ -391,9 +391,10 @@ def run_non_football_pipeline(verbose: bool = True):
     seen_pairs: set = set()
 
     for (home_name, away_name), odds_data in odds_batch.items():
-        # הבatch מכיל כל זוג פעמיים (lower + original) — נעבד רק פעם אחת
-        if (home_name, away_name) != (home_name.lower(), away_name.lower()):
-            continue  # דלג על הגרסה הלא-lower
+        # הבatch מכיל כל זוג פעמיים (lower + original)
+        # נעבד רק את הגרסה lower-case (הייחודית)
+        if home_name != home_name.lower() or away_name != away_name.lower():
+            continue  # דלג על הגרסה original — lower-case כבר מכוסה
 
         sport_key = odds_data.get("sport_key", "")
         if not sport_key:
