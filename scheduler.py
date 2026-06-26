@@ -15,11 +15,14 @@ print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} — מתחיל...", f
 
 try:
     print("📦 טוען main...", flush=True)
-    from main import run_pipeline
+    from main import run_pipeline, run_non_football_pipeline
     print("✅ main נטען", flush=True)
 
     print("🚀 מריץ pipeline...", flush=True)
     run_pipeline(verbose=True)
+
+    print("🏀 מריץ Non-Football Pipeline...", flush=True)
+    run_non_football_pipeline(verbose=True)
 
     print("✅ הסריקה הושלמה. הסקריפט סיים את ריצתו ומשחרר משאבים.", flush=True)
     sys.exit(0)
