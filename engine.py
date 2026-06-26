@@ -182,45 +182,77 @@ def elo_confidence_weight(elo: float, games_played: int = 0) -> float:
     return min(1.0, proxy_games / ELO_CONVERGENCE_GAMES)
 
 
-def shrink_probability(p: float, n_outcomes: int, confidence: float) -> float:
+def shrink_probability(p: float, prior_p: float, confidence: float) -> float:
     """
-    Shrinkage של הסתברות לכיוון prior אחיד.
-    confidence=1.0 → ללא שינוי (Elo מכויל)
-    confidence=0.0 → prior אחיד (1/n_outcomes)
+    Market-Based Shrinkage: כיווץ הסתברות לכיוון יעד ספציפי (prior_p).
+
+    confidence=1.0 → p ללא שינוי (Elo מכויל — EV נשמר)
+    confidence=0.0 → prior_p בלבד (הסכמה מלאה עם השוק — EV=0)
+
+    שיפור על Prior אחיד:
+    - Prior אחיד (33%/50%) מנפח אנדרדוגים: ניו זילנד 5% → 19% → EV מזויף.
+    - Market Prior שומר על פרופורציות: ניו זילנד 5% → 5% כש-confidence=0 → EV=0.
     """
-    prior = 1.0 / n_outcomes
-    return confidence * p + (1.0 - confidence) * prior
+    return confidence * p + (1.0 - confidence) * prior_p
 
 
 def apply_elo_confidence(probs: dict, elo_home: float, elo_away: float,
-                          games_home: int = -1, games_away: int = -1) -> dict:
+                          games_home: int = -1, games_away: int = -1,
+                          odds: dict | None = None) -> dict:
     """
-    מחיל Elo Confidence Discount על מילון הסתברויות.
-    משמש ב-full_match_analysis לפני חישוב EV/Kelly.
+    מחיל Elo Confidence Discount על מילון הסתברויות — Market-Based Shrinkage.
 
-    מחזיר מילון הסתברויות מוקטנות (מנורמלות).
+    לוגיקת prior:
+    1. אם יש odds תקינים → prior = Implied Market Probability (מנורמל, ללא overround).
+       confidence=0 → EV=0 (מסכים עם השוק בדיוק) — אין False Value Bets.
+    2. אם אין odds / לא תקינים → Fallback ל-Prior אחיד (1/n_outcomes).
+       מתאים למשחקים ללא שוק (אימונים, כוס קטנה וכד').
+
+    מחזיר מילון הסתברויות מעוכבות (מנורמלות) + _elo_confidence.
     """
     conf_h   = elo_confidence_weight(elo_home, games_home)
     conf_a   = elo_confidence_weight(elo_away, games_away)
-    # ביטחון מינימלי בין שתי הקבוצות — השפעה סימטרית
     combined = (conf_h + conf_a) / 2.0
 
     has_draw   = "draw" in probs and probs.get("draw", 0) > 0
     n_outcomes = 3 if has_draw else 2
+    outcomes   = ["home", "draw", "away"] if has_draw else ["home", "away"]
 
-    result = {}
-    for k, v in probs.items():
-        if k in ("home", "draw", "away"):
-            result[k] = shrink_probability(v, n_outcomes, combined)
-        else:
-            result[k] = v
+    # ── בנה Market Prior ──────────────────────────────────────────────────────
+    market_prior: dict[str, float] = {}
+    if odds:
+        raw: dict[str, float] = {}
+        valid = True
+        for k in outcomes:
+            o = odds.get(k, 0)
+            if o and o > 1.01:
+                raw[k] = implied_probability(o)
+            else:
+                valid = False
+                break
+        if valid and raw:
+            total_imp = sum(raw.values())
+            if total_imp > 0:
+                # נרמול — מסיר את ה-overround של הבוקמייקר
+                market_prior = {k: v / total_imp for k, v in raw.items()}
 
-    # נרמול
-    total = result.get("home", 0) + result.get("away", 0) + result.get("draw", 0)
+    # Fallback: Prior אחיד אם אין odds תקינים
+    uniform_prior = 1.0 / n_outcomes
+    if not market_prior:
+        market_prior = {k: uniform_prior for k in outcomes}
+
+    # ── החל Shrinkage ─────────────────────────────────────────────────────────
+    result = dict(probs)  # שמור מפתחות נוספים (xg_home וכד')
+    for k in outcomes:
+        p     = probs.get(k, uniform_prior)
+        prior = market_prior.get(k, uniform_prior)
+        result[k] = shrink_probability(p, prior, combined)
+
+    # נרמול סופי (מתקן drift קטן מהכיווץ)
+    total = sum(result.get(k, 0) for k in outcomes)
     if total > 0:
-        for k in ("home", "draw", "away"):
-            if k in result:
-                result[k] = round(result[k] / total, 4)
+        for k in outcomes:
+            result[k] = round(result[k] / total, 4)
 
     result["_elo_confidence"] = round(combined, 3)
     return result
@@ -547,7 +579,8 @@ def full_match_analysis(elo_home: float, elo_away: float,
         # הצגה בממשק (our_prob) נשארת ללא שינוי — ציון שקוף למשתמש.
         raw_ev_probs = pure_probs if pure_probs else probs
         ev_probs     = apply_elo_confidence(
-            raw_ev_probs, elo_home, elo_away, games_home, games_away
+            raw_ev_probs, elo_home, elo_away, games_home, games_away,
+            odds=odds,  # Market-Based Shrinkage — prior = implied market prob
         )
         elo_confidence = ev_probs.get("_elo_confidence", 1.0)
 
@@ -583,7 +616,8 @@ def full_match_analysis(elo_home: float, elo_away: float,
         # ── Elo Confidence Discount ─────────────────────────────────────────
         raw_ev_probs = pure_probs if pure_probs else probs
         ev_probs     = apply_elo_confidence(
-            raw_ev_probs, elo_home, elo_away, games_home, games_away
+            raw_ev_probs, elo_home, elo_away, games_home, games_away,
+            odds=odds,  # Market-Based Shrinkage — prior = implied market prob
         )
         elo_confidence = ev_probs.get("_elo_confidence", 1.0)
 
