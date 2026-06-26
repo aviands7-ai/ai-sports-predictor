@@ -259,7 +259,7 @@ def _extract_odds(event: dict) -> list[dict]:
     all_books      = []
     home_team_name = event.get("home_team", "").lower()
     away_team_name = event.get("away_team", "").lower()
-    has_draw       = event.get("_has_draw", True)
+    has_draw       = event.get("_has_draw", False)
 
     for bm in event.get("bookmakers", []):
         bm_key   = bm["key"]
@@ -317,7 +317,7 @@ def get_all_odds_batch() -> dict:
     for event in data:
         h        = event.get("home_team", "")
         a        = event.get("away_team", "")
-        has_draw = event.get("_has_draw", True)
+        has_draw = event.get("_has_draw", False)
         books    = _extract_odds(event)
         if not books:
             continue
