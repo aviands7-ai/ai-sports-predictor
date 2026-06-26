@@ -319,6 +319,21 @@ def get_all_odds_batch() -> dict:
         a        = event.get("away_team", "")
         has_draw = event.get("_has_draw", False)
         books    = _extract_odds(event)
+        # DEBUG NFL
+        if event.get("_sport_key","").startswith("americanfootball_nfl") and not books:
+            print(f"[DEBUG] NFL no books: {event.get('home_team')} vs {event.get('away_team')}", flush=True)
+            print(f"[DEBUG] _has_draw={event.get('_has_draw')} bookmakers={len(event.get('bookmakers',[]))}", flush=True)
+            # try manual extract
+            for bm in event.get("bookmakers",[])[:1]:
+                for mkt in bm.get("markets",[]):
+                    if mkt["key"]=="h2h":
+                        outcomes = mkt.get("outcomes",[])
+                        hn = event.get("home_team","").lower()
+                        an = event.get("away_team","").lower()
+                        out_names = {o["name"].lower():o["price"] for o in outcomes}
+                        print(f"[DEBUG] home_key={hn!r} away_key={an!r}", flush=True)
+                        print(f"[DEBUG] outcome_keys={list(out_names.keys())}", flush=True)
+                        print(f"[DEBUG] home match={out_names.get(hn)} away match={out_names.get(an)}", flush=True)
         if not books:
             continue
 
