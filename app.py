@@ -540,7 +540,7 @@ with tab_value:
             }
             elo_confidence = an.get("elo_confidence", 1.0)
             # מינימום משחקים לכניסה לסריקה — מונע EV מנופח לחלוטין
-            MIN_GAMES_FOR_VB = 10
+            MIN_GAMES_FOR_VB = 6
             gp_min = min(
                 gp_h if gp_h >= 0 else 0,
                 gp_a if gp_a >= 0 else 0,
