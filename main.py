@@ -23,6 +23,29 @@ from ensemble import fifa_probabilities
 _CURRENT_RHO = DEFAULT_RHO
 
 
+def _load_games_played() -> dict:
+    """
+    טוען מ-Supabase את מספר המשחקים האמיתי לכל קבוצה.
+    מחזיר {team_id: games_played}.
+    משמש ל-Elo Confidence Discount — קריטי למניעת EV מנופח.
+    """
+    try:
+        import os
+        from supabase import create_client
+        from collections import Counter
+        db   = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+        res  = db.table("matches").select("home_team_id, away_team_id").execute()
+        counts: Counter = Counter()
+        for row in (res.data or []):
+            if row.get("home_team_id"): counts[row["home_team_id"]] += 1
+            if row.get("away_team_id"): counts[row["away_team_id"]] += 1
+        print(f"[Pipeline] games_played נטען: {len(counts)} קבוצות", flush=True)
+        return dict(counts)
+    except Exception as e:
+        print(f"[Pipeline] ⚠️ שגיאה בטעינת games_played: {e}", flush=True)
+        return {}
+
+
 def _auto_calibrate_rho(verbose: bool = True) -> float:
     global _CURRENT_RHO
     matches = load_matches_for_calibration()
@@ -76,6 +99,11 @@ def run_pipeline(verbose: bool = True):
     if verbose:
         print(f"   ✅ {len(odds_batch)//2} משחקים עם odds", flush=True)
 
+    # ── שלב 2.5: games_played אמיתי מ-Supabase ───────────────────────────────
+    # קריטי: מונע EV מנופח לקבוצות עם FIFA Starting Elo גבוה (כמו קולומביה, גאנה)
+    # שטרם שיחקו מספיק משחקים להתכנסות Elo אמיתית.
+    gp_cache = _load_games_played()
+
     # ── שלב 3: Fixtures מ-API-Football (כדורגל בלבד) ─────────────────────────
     fixtures = get_all_fixtures()
 
@@ -98,7 +126,8 @@ def run_pipeline(verbose: bool = True):
 
     skipped = 0
     for match in fixtures_sorted:
-        result = _process_match(match, verbose, rho=rho, odds_batch=odds_batch)
+        result = _process_match(match, verbose, rho=rho, odds_batch=odds_batch,
+                                gp_cache=gp_cache)
         if result == "skipped":
             skipped += 1
 
@@ -111,10 +140,12 @@ def run_pipeline(verbose: bool = True):
 
 def _process_match(match: dict, verbose: bool,
                    rho: float = DEFAULT_RHO,
-                   odds_batch: dict | None = None) -> str:
+                   odds_batch: dict | None = None,
+                   gp_cache: dict | None = None) -> str:
     """
     מעבד משחק אחד.
     מחזיר "ok" אם עובד, "skipped" אם דולג.
+    gp_cache: {team_id: games_played} — נטען פעם אחת ב-run_pipeline.
     """
     fix        = match["fixture"]
     fixture_id = fix["id"]
@@ -174,6 +205,9 @@ def _process_match(match: dict, verbose: bool,
         form_home = form_away = 1.0
 
     # ── ניתוח מלא (3-way או 2-way לפי has_draw) ──────────────────────────────
+    gp_h = (gp_cache or {}).get(home["id"], -1)
+    gp_a = (gp_cache or {}).get(away["id"], -1)
+
     analysis = full_match_analysis(
         elo_home, elo_away, odds,
         home_advantage=0.0,
@@ -182,6 +216,8 @@ def _process_match(match: dict, verbose: bool,
         odds_updated_at=odds_updated_at,
         rho=rho,
         has_draw=has_draw,
+        games_home=gp_h,
+        games_away=gp_a,
     )
 
     # ── שמירת משחק ───────────────────────────────────────────────────────────
