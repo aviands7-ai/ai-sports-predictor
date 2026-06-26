@@ -155,29 +155,30 @@ def get_starting_elo(team_name: str) -> float:
 # ─── Elo Confidence Discount ────────────────────────────────────────────────────
 
 # Elo שברירת מחדל — קבוצות שטרם שיחקו ואין להן דירוג ידוע
-ELO_DEFAULT     = 1400.0
-ELO_CONVERGENCE_GAMES = 10   # לאחר כמה משחקים Elo נחשב מכוייל
+ELO_DEFAULT           = 1400.0
+ELO_CONVERGENCE_GAMES = 20   # לאחר כמה משחקים Elo נחשב מכוייל
+                              # 10 לא מספיק — קולומביה ב-3 משחקים קיבלה confidence=0.3
+                              # אבל combined עם פורטוגל (8 משחקים) = 0.55 → EV מנופח.
+                              # 20 מבטיח שקבוצה צריכה מחזור שלם לפני confidence מלא.
 
 def elo_confidence_weight(elo: float, games_played: int = 0) -> float:
     """
     מחשב משקל ביטחון ל-Elo של קבוצה.
 
-    קבוצה שטרם שיחקה (games_played=0) עם Elo ברירת מחדל (1400):
-      → weight = 0.0  (אין ביטחון — shrink מלא לכיוון prior)
-    קבוצה עם 10+ משחקים:
-      → weight = 1.0  (ביטחון מלא — ללא shrinkage)
+    קבוצה שטרם שיחקה (games_played=0): weight = 0.0
+    קבוצה עם 20+ משחקים:               weight = 1.0
     בין לבין — ליניארי.
 
-    אם games_played לא ידוע (−1) → משתמש ב-Elo distance מ-1400 כ-proxy:
-      ±50 נקודות מ-1400 = ~5 משחקים בהערכה גסה.
+    אם games_played לא ידוע (−1) → proxy לפי Elo distance מ-1400.
+    סף 20 (במקום 10) — נדרש לאחר שהתגלה שקבוצות עם FIFA Starting Elo גבוה
+    (קולומביה 1796, גאנה 1676) קיבלו confidence גבוה למרות מעט משחקים.
     """
     if games_played >= ELO_CONVERGENCE_GAMES:
         return 1.0
     if games_played > 0:
         return min(1.0, games_played / ELO_CONVERGENCE_GAMES)
-    # proxy לפי מרחק מ-default — קבוצה ב-1400 = 0 ביטחון
-    elo_delta = abs(elo - ELO_DEFAULT)
-    # כל 20 נקודות מרחק = ~1 משחק בהערכה
+    # proxy לפי מרחק מ-default — כל 20 נקודות = ~1 משחק
+    elo_delta   = abs(elo - ELO_DEFAULT)
     proxy_games = min(ELO_CONVERGENCE_GAMES, elo_delta / 20.0)
     return min(1.0, proxy_games / ELO_CONVERGENCE_GAMES)
 
@@ -212,7 +213,11 @@ def apply_elo_confidence(probs: dict, elo_home: float, elo_away: float,
     """
     conf_h   = elo_confidence_weight(elo_home, games_home)
     conf_a   = elo_confidence_weight(elo_away, games_away)
-    combined = (conf_h + conf_a) / 2.0
+    # מינימום — לא ממוצע.
+    # אם קבוצה אחת לא התכנסה, כל המשחק לא בטוח.
+    # ממוצע יצר EV מנופח: קולומביה (0.30) + פורטוגל (0.80) = combined 0.55 → EV +146%.
+    # מינימום: min(0.30, 0.80) = 0.30 → Shrinkage חזק יותר → EV ריאלי.
+    combined = min(conf_h, conf_a)
 
     has_draw   = "draw" in probs and probs.get("draw", 0) > 0
     n_outcomes = 3 if has_draw else 2
