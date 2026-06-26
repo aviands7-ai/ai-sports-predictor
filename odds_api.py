@@ -187,7 +187,7 @@ def _get_events() -> list:
             break
 
         sport_key = sport_info.get("key", "")
-        has_draw  = sport_info.get("has_draw", True)
+        has_draw  = sport_info.get("has_draw", False)
         if not sport_key:
             continue
 
