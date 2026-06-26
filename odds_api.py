@@ -193,12 +193,22 @@ def _get_events() -> list:
 
         ck = f"events_{sport_key}"
 
-        # EU/UK + US — Decimal (מכסה כדורגל אירופאי + NFL/MLB/NBA אמריקאי)
+        # EU/UK — Decimal (כדורגל + ספורט בינלאומי)
         data = _get(f"sports/{sport_key}/odds", {
-            "regions":    "eu,uk,us",
+            "regions":    "eu,uk",
             "markets":    "h2h",
             "oddsFormat": "decimal",
         }, cache_key=ck)
+
+        # אם אין bookmakers אירופאיים — נסה US (NFL/MLB/NBA/MMA)
+        if not data or not any(e.get("bookmakers") for e in data):
+            data_us = _get(f"sports/{sport_key}/odds", {
+                "regions":    "us",
+                "markets":    "h2h",
+                "oddsFormat": "decimal",
+            }, cache_key=f"{ck}_us")
+            if data_us and any(e.get("bookmakers") for e in data_us):
+                data = data_us
 
         if data and isinstance(data, list) and len(data) > 0:
             print(f"[OddsAPI] ✅ {sport_key}: {len(data)} משחקים", flush=True)
