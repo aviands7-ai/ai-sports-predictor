@@ -460,66 +460,94 @@ with tab_value:
 
     if st.button("🔍 הפעל סריקה", key="scan_btn", type="primary"):
 
-        @st.cache_data(ttl=1800, show_spinner=False)
-        def load_for_scan():
-            return get_all_fixtures()
-
-        with st.spinner("טוען משחקים..."):
-            fixtures = load_for_scan()
-            upcoming = [f for f in fixtures if f["fixture"]["status"]["short"] in ("NS","TBD")]
-
         with st.spinner("שואב Odds — קריאה אחת לכל הספורט..."):
             odds_batch = get_all_odds_batch()
         st.caption(f"נטענו Odds ל-{len(odds_batch)//2} משחקים בקריאה אחת")
 
-        # ── פילטר ענפי ספורט דינמי ──────────────────────────────────────────
-        league_names = sorted(set(f.get("league",{}).get("name","") for f in upcoming if f.get("league",{}).get("name","")))
-        selected_sports = st.multiselect(
-            "סנן לפי ליגה",
-            options=league_names,
-            default=league_names,
-            key="vb_sport_filter",
-            label_visibility="collapsed",
-            placeholder="בחר ליגות...",
-        )
-        if selected_sports:
-            upcoming = [f for f in upcoming if f.get("league",{}).get("name","") in selected_sports]
+        # ── טוען משחקים עתידיים ישירות מה-DB (לא תלוי בFootball API) ──────────
+        @st.cache_data(ttl=1800, show_spinner=False)
+        def load_upcoming_from_db() -> list[dict]:
+            """
+            קורא predictions עתידיות מ-Supabase.
+            עמיד ל-Football API Rate Limit — הנתונים כבר ב-DB מה-Pipeline.
+            """
+            try:
+                from supabase import create_client
+                db  = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+                res = (db.table("predictions")
+                         .select("*")
+                         .eq("status", "NS")
+                         .gte("match_date", __import__('datetime').datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"))
+                         .order("match_date")
+                         .execute())
+                return res.data or []
+            except Exception as e:
+                st.warning(f"⚠️ שגיאה בטעינת DB: {e}")
+                return []
 
+        with st.spinner("טוען משחקים מה-DB..."):
+            db_predictions = load_upcoming_from_db()
+
+        if not db_predictions:
+            st.warning("לא נמצאו משחקים עתידיים ב-DB. הרץ Pipeline תחילה.")
+            st.stop()
+
+        # ── פילטר ליגות ────────────────────────────────────────────────────────
+        league_names = sorted(set(
+            p.get("home_team_name","").split(" ")[0]  # placeholder
+            for p in db_predictions
+        ))
+        # פילטר פשוט לפי has_draw (כדורגל/לא כדורגל) — ניתן להרחיב
         value_rows = []
         current_rho = get_current_rho()
         progress = st.progress(0)
 
-        # טוען games_played אמיתי מ-Supabase — פעם אחת לכל הסריקה
+        # טוען games_played אמיתי מ-Supabase
         gp_cache = _load_games_played_cache()
 
-        for i, f in enumerate(upcoming):
-            progress.progress((i + 1) / max(len(upcoming), 1))
-            h = f["teams"]["home"]
-            a = f["teams"]["away"]
+        for i, pred in enumerate(db_predictions):
+            progress.progress((i + 1) / max(len(db_predictions), 1))
+
+            home_name = pred.get("home_team_name", "")
+            away_name = pred.get("away_team_name", "")
+            has_draw  = pred.get("has_draw", True)
+            match_date = pred.get("match_date", "")[:10]
 
             # שלוף odds מה-batch
-            live = lookup_odds_from_batch(odds_batch, h["name"], a["name"])
+            live = lookup_odds_from_batch(odds_batch, home_name, away_name)
             if not live:
-                continue
-
-            has_draw = live.get("has_draw", True)
-            if has_draw:
-                odds = {k: live.get(k) for k in ["home","draw","away"] if live.get(k)}
-                if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 25
-                           for k in ["home","draw","away"]):
+                # fallback: השתמש ב-odds מה-DB
+                o_h = pred.get("odds_home")
+                o_d = pred.get("odds_draw")
+                o_a = pred.get("odds_away")
+                if not o_h or not o_a:
                     continue
+                if has_draw:
+                    odds = {"home": float(o_h), "draw": float(o_d or 0), "away": float(o_a)}
+                else:
+                    odds = {"home": float(o_h), "away": float(o_a)}
             else:
-                odds = {k: live.get(k) for k in ["home","away"] if live.get(k)}
-                if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 25
-                           for k in ["home","away"]):
-                    continue
+                has_draw = live.get("has_draw", has_draw)
+                if has_draw:
+                    odds = {k: live.get(k) for k in ["home","draw","away"] if live.get(k)}
+                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 25
+                               for k in ["home","draw","away"]):
+                        continue
+                else:
+                    odds = {k: live.get(k) for k in ["home","away"] if live.get(k)}
+                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 25
+                               for k in ["home","away"]):
+                        continue
 
-            elo_h = get_team_elo(h["id"])
-            elo_a = get_team_elo(a["id"])
+            # Elo מה-DB
+            elo_h = pred.get("elo_home") or 1400.0
+            elo_a = pred.get("elo_away") or 1400.0
 
-            # games_played אמיתי — מונע EV מנופח לקבוצות עם FIFA Starting Elo גבוה
-            gp_h = get_games_played(h["id"], gp_cache)
-            gp_a = get_games_played(a["id"], gp_cache)
+            # games_played
+            home_id = pred.get("home_team_id")
+            away_id = pred.get("away_team_id")
+            gp_h = get_games_played(home_id, gp_cache) if home_id else -1
+            gp_a = get_games_played(away_id, gp_cache) if away_id else -1
 
             an = full_match_analysis(
                 elo_h, elo_a, odds,
@@ -530,45 +558,39 @@ with tab_value:
                 games_away=gp_a,
             )
 
-            league_name = f.get("league",{}).get("name","")
-            sport_key   = live.get("sport_key","")
-            sport_disp  = sport_label(sport_key) if sport_key else f"⚽ {league_name}"
+            sport_key  = live.get("sport_key", "") if live else ""
+            sport_disp = sport_label(sport_key) if sport_key else "⚽ כדורגל"
 
             outcomes = ["home","away"] if not has_draw else ["home","draw","away"]
-            outcome_labels = {
-                "home": h["name"], "draw": "תיקו", "away": a["name"]
-            }
+            outcome_labels = {"home": home_name, "draw": "תיקו", "away": away_name}
+
             elo_confidence = an.get("elo_confidence", 1.0)
-            # מינימום משחקים לכניסה לסריקה — מונע EV מנופח לחלוטין
-            # -1 = לא ידוע (cache ריק) → אל תסנן, תן ל-EV_HARD_CAP לעשות את העבודה
             MIN_GAMES_FOR_VB = 6
             gp_min_known = [g for g in [gp_h, gp_a] if g >= 0]
             if gp_min_known and min(gp_min_known) < MIN_GAMES_FOR_VB:
-                continue  # קבוצה עם פחות מ-6 משחקים ידועים — לא מהימנה לסריקה
+                continue
 
-            # Hard Cap על EV — EV מעל 40% הוא כמעט תמיד סימן לחוסר התכנסות
             EV_HARD_CAP = 0.40
-
             for outcome in outcomes:
-                ev     = an[outcome].get("ev", 0) or 0
-                kelly  = an[outcome].get("kelly_pct", 0) or 0
+                ev    = an[outcome].get("ev", 0) or 0
+                kelly = an[outcome].get("kelly_pct", 0) or 0
                 if ev <= 0.03:
                     continue
                 if ev > EV_HARD_CAP:
-                    continue  # EV לא ריאלי — חוסר התכנסות Elo
+                    continue
                 if elo_confidence < 0.5:
-                    continue  # confidence נמוך — Shrinkage לא מספיק
-                    value_rows.append({
-                        "תאריך":    f["fixture"]["date"][:10],
-                        "ענף":      sport_disp,
-                        "משחק":     f"{h['name']} vs {a['name']}",
-                        "הימור על": outcome_labels[outcome],
-                        "Odds":     odds.get(outcome, 0),
-                        "סיכוי %":  an[outcome].get("our_prob", 0),
-                        "EV":       f"+{ev:.1%}",
-                        "Kelly %":  f"{kelly:.1f}%",
-                        "Elo ביטחון": f"{elo_confidence:.0%}",
-                    })
+                    continue
+                value_rows.append({
+                    "תאריך":       match_date,
+                    "ענף":         sport_disp,
+                    "משחק":        f"{home_name} vs {away_name}",
+                    "הימור על":    outcome_labels[outcome],
+                    "Odds":        odds.get(outcome, 0),
+                    "סיכוי %":     an[outcome].get("our_prob", 0),
+                    "EV":          f"+{ev:.1%}",
+                    "Kelly %":     f"{kelly:.1f}%",
+                    "Elo ביטחון":  f"{elo_confidence:.0%}",
+                })
 
         progress.empty()
         st.session_state["last_value_bets"] = [
