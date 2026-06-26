@@ -350,6 +350,22 @@ def get_all_odds_batch() -> dict:
         batch[(h, a)]                 = odds_result
         batch[(h.lower(), a.lower())] = odds_result
 
+    # DEBUG — show NFL events bookmakers
+    nfl_events = [e for e in data if e.get("_sport_key","").startswith("americanfootball_nfl")]
+    if nfl_events:
+        e = nfl_events[0]
+        books = e.get("bookmakers", [])
+        print(f"[OddsAPI DEBUG] NFL event: {e.get('home_team')} vs {e.get('away_team')}", flush=True)
+        print(f"[OddsAPI DEBUG] bookmakers count: {len(books)}", flush=True)
+        if books:
+            b = books[0]
+            print(f"[OddsAPI DEBUG] first book: {b.get('key')} markets: {[m['key'] for m in b.get('markets',[])]}",flush=True)
+            for m in b.get('markets',[]):
+                if m['key']=='h2h':
+                    print(f"[OddsAPI DEBUG] h2h outcomes: {[(o['name'],o['price']) for o in m.get('outcomes',[])]}", flush=True)
+    else:
+        print("[OddsAPI DEBUG] ❌ אין NFL events בכלל אחרי _get_events!", flush=True)
+
     print(f"[OddsAPI] Batch: {len(data)} משחקים → {len(batch)//2} עם odds", flush=True)
     return batch
 
