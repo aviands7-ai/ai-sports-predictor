@@ -540,13 +540,11 @@ with tab_value:
             }
             elo_confidence = an.get("elo_confidence", 1.0)
             # מינימום משחקים לכניסה לסריקה — מונע EV מנופח לחלוטין
+            # -1 = לא ידוע (cache ריק) → אל תסנן, תן ל-EV_HARD_CAP לעשות את העבודה
             MIN_GAMES_FOR_VB = 6
-            gp_min = min(
-                gp_h if gp_h >= 0 else 0,
-                gp_a if gp_a >= 0 else 0,
-            )
-            if gp_min < MIN_GAMES_FOR_VB:
-                continue  # קבוצה עם פחות מ-10 משחקים — לא מהימנה לסריקה
+            gp_min_known = [g for g in [gp_h, gp_a] if g >= 0]
+            if gp_min_known and min(gp_min_known) < MIN_GAMES_FOR_VB:
+                continue  # קבוצה עם פחות מ-6 משחקים ידועים — לא מהימנה לסריקה
 
             # Hard Cap על EV — EV מעל 40% הוא כמעט תמיד סימן לחוסר התכנסות
             EV_HARD_CAP = 0.40
