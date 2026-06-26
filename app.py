@@ -565,7 +565,7 @@ with tab_value:
             outcome_labels = {"home": home_name, "draw": "תיקו", "away": away_name}
 
             elo_confidence = an.get("elo_confidence", 1.0)
-            MIN_GAMES_FOR_VB = 6
+            MIN_GAMES_FOR_VB = 3
             gp_min_known = [g for g in [gp_h, gp_a] if g >= 0]
             if gp_min_known and min(gp_min_known) < MIN_GAMES_FOR_VB:
                 continue
