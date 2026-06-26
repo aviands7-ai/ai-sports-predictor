@@ -382,6 +382,18 @@ def run_non_football_pipeline(verbose: bool = True):
         print("[NFP] ⚠️ Odds Batch ריק", flush=True)
         return
 
+    # DEBUG — בדיקת NFL ב-batch
+    nfl_sample = [(k, v) for k, v in odds_batch.items()
+                  if isinstance(k, tuple) and v.get("sport_key","").startswith("americanfootball_nfl")
+                  and k[0] == k[0].lower()][:2]
+    if nfl_sample:
+        k, v = nfl_sample[0]
+        print(f"[NFP DEBUG] NFL sample: {k} home={v.get('home')} away={v.get('away')}", flush=True)
+    else:
+        print("[NFP DEBUG] אין NFL ב-batch — כל ה-sport_keys:", flush=True)
+        keys = set(v.get("sport_key","") for k,v in odds_batch.items() if isinstance(k,tuple) and k[0]==k[0].lower())
+        print(f"[NFP DEBUG] {sorted(keys)}", flush=True)
+
     gp_cache = _load_games_played()
     rho      = _CURRENT_RHO
     count    = 0
