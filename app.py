@@ -477,7 +477,7 @@ with tab_value:
                 res = (db.table("predictions")
                          .select("*")
                          .eq("status", "NS")
-                         .gte("match_date", __import__('datetime').datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"))
+                         .gte("match_date", __import__('datetime').datetime.now(__import__('datetime').timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"))
                          .order("match_date")
                          .execute())
                 return res.data or []
