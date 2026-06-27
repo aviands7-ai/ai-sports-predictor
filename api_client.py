@@ -18,121 +18,44 @@ HEADERS  = {"x-apisports-key": API_KEY}
 
 WC_LEAGUE_ID = 1
 WC_SEASON    = 2026
-WC_FROM      = "2026-06-11"
-WC_TO        = "2026-07-19"
 
 # ── Whitelist ליגות רלוונטיות לשלב 3 ─────────────────────────────────────────
-# רק ליגות שמוצגות ב-Odds API מרכזיים ורלוונטיות לניתוח Value Betting.
-# ליגות ללא נוכחות ב-Odds API (USL League Two, מונגוליה, לבנון וכד') מסוננות.
 LEAGUE_WHITELIST: set[int] = {
-    # ── כדורגל עולמי / בינלאומי ─────────────────────────────────────────────
-    1,    # FIFA World Cup
-    2,    # UEFA Champions League
-    3,    # UEFA Europa League
-    848,  # UEFA Europa Conference League
-    531,  # UEFA Super Cup
-    # ── אנגליה ───────────────────────────────────────────────────────────────
-    39,   # Premier League
-    40,   # Championship
-    41,   # League One
-    48,   # FA Cup
-    45,   # EFL Cup
-    # ── ספרד ─────────────────────────────────────────────────────────────────
-    140,  # La Liga
-    141,  # La Liga 2
-    143,  # Copa del Rey
-    # ── גרמניה ───────────────────────────────────────────────────────────────
-    78,   # Bundesliga
-    79,   # 2. Bundesliga
-    81,   # DFB Pokal
-    # ── איטליה ───────────────────────────────────────────────────────────────
-    135,  # Serie A
-    136,  # Serie B
-    137,  # Coppa Italia
-    # ── צרפת ─────────────────────────────────────────────────────────────────
-    61,   # Ligue 1
-    62,   # Ligue 2
-    66,   # Coupe de France
-    # ── הולנד ────────────────────────────────────────────────────────────────
-    88,   # Eredivisie
-    89,   # Eerste Divisie
-    # ── פורטוגל ──────────────────────────────────────────────────────────────
-    94,   # Primeira Liga
-    95,   # Liga Portugal 2
-    # ── בלגיה ────────────────────────────────────────────────────────────────
-    144,  # Jupiler Pro League
-    145,  # First Amateur Division
-    # ── טורקיה ───────────────────────────────────────────────────────────────
-    203,  # Süper Lig
-    204,  # 1. Lig
-    # ── יוון ─────────────────────────────────────────────────────────────────
-    197,  # Super League
-    # ── פולין ────────────────────────────────────────────────────────────────
-    106,  # Ekstraklasa
-    # ── שוודיה ───────────────────────────────────────────────────────────────
-    113,  # Allsvenskan
-    114,  # Superettan
-    # ── נורווגיה ─────────────────────────────────────────────────────────────
-    103,  # Eliteserien
-    104,  # 1. divisjon
-    # ── דנמרק ────────────────────────────────────────────────────────────────
-    119,  # Superliga
-    120,  # 1st Division
-    # ── שווייץ ───────────────────────────────────────────────────────────────
-    207,  # Super League
-    208,  # Challenge League
-    # ── אוסטריה ──────────────────────────────────────────────────────────────
-    218,  # Bundesliga
-    219,  # 2. Liga
-    # ── סקוטלנד ──────────────────────────────────────────────────────────────
-    179,  # Premiership
-    180,  # Championship
-    # ── רוסיה ────────────────────────────────────────────────────────────────
-    235,  # Premier League
-    # ── אוקראינה ─────────────────────────────────────────────────────────────
-    333,  # Premier League
-    # ── צ'כיה ────────────────────────────────────────────────────────────────
-    345,  # Czech Liga
-    # ── סרביה ────────────────────────────────────────────────────────────────
-    392,  # Super Liga
-    # ── קרואטיה ──────────────────────────────────────────────────────────────
-    210,  # HNL
-    # ── רומניה ───────────────────────────────────────────────────────────────
-    283,  # Liga 1
-    # ── הונגריה ──────────────────────────────────────────────────────────────
-    # ── ישראל ─────────────────────────────────────────────────────────────────
-    271,  # Ligat HaAl (ליגת העל)
-    # ── אמריקה ───────────────────────────────────────────────────────────────
-    253,  # MLS
-    254,  # US Open Cup
-    262,  # Liga MX
-    263,  # Copa MX
-    # ── ברזיל ────────────────────────────────────────────────────────────────
-    71,   # Brasileirão Serie A
-    72,   # Brasileirão Serie B
-    73,   # Copa do Brasil
-    # ── ארגנטינה ─────────────────────────────────────────────────────────────
-    128,  # Primera División
-    130,  # Copa Argentina
-    # ── קולומביה ─────────────────────────────────────────────────────────────
-    239,  # Primera A
-    # ── צ'ילה ────────────────────────────────────────────────────────────────
-    265,  # Primera División
-    # ── אורוגוואי ────────────────────────────────────────────────────────────
-    268,  # Primera División
-    # ── פרו ──────────────────────────────────────────────────────────────────
-    281,  # Liga 1
-    # ── קונמבול ──────────────────────────────────────────────────────────────
-    13,   # Copa Libertadores
-    11,   # Copa Sudamericana
-    # ── אסיה ─────────────────────────────────────────────────────────────────
-    98,   # J-League (יפן)
-    292,  # K League 1 (קוריאה)
-    169,  # A-League (אוסטרליה)
-    307,  # Saudi Pro League (ערב הסעודית)
-    # ── אפריקה ───────────────────────────────────────────────────────────────
-    29,   # Africa Cup of Nations
-    20,   # African Champions League
+    1, 2, 3, 848, 531,
+    39, 40, 41, 48, 45,
+    140, 141, 143,
+    78, 79, 81,
+    135, 136, 137,
+    61, 62, 66,
+    88, 89,
+    94, 95,
+    144, 145,
+    203, 204,
+    197,
+    106,
+    113, 114,
+    103, 104,
+    119, 120,
+    207, 208,
+    218, 219,
+    179, 180,
+    235,
+    333,
+    345,
+    392,
+    210,
+    283,
+    271,
+    253, 254, 262, 263,
+    71, 72, 73,
+    128, 130,
+    239,
+    265,
+    268,
+    281,
+    13, 11,
+    98, 292, 169, 307,
+    29, 20,
 }
 
 # ── מצב גלובלי ───────────────────────────────────────────────────────────────
@@ -150,12 +73,6 @@ def _get_cache_key(endpoint: str, params: dict) -> str:
 
 def _get(endpoint: str, params: dict, retries: int = 3,
          use_cache: bool = False) -> dict:
-    """
-    קריאה ל-API עם:
-    - cache יומי (use_cache=True) — מניעת קריאות כפולות
-    - עצירה מיידית על 429 / 401 / 403
-    - retry עם exponential backoff על שגיאות רשת
-    """
     global _API_BLOCKED, _BLOCKED_REASON, _DAILY_CACHE, _CACHE_DATE
 
     if _API_BLOCKED:
@@ -177,14 +94,12 @@ def _get(endpoint: str, params: dict, retries: int = 3,
         try:
             res = requests.get(url, headers=HEADERS, params=params, timeout=15)
 
-            # עצירה מיידית — Rate Limit
             if res.status_code == 429:
                 _API_BLOCKED    = True
                 _BLOCKED_REASON = "Rate Limit (429) — חכה עד מחר"
                 print("[API] ⛔ RATE LIMIT! הסריקה נעצרת.", flush=True)
                 return {}
 
-            # עצירה מיידית — Key שגוי
             if res.status_code in (401, 403):
                 _API_BLOCKED    = True
                 _BLOCKED_REASON = f"API Key לא תקין ({res.status_code})"
@@ -194,7 +109,6 @@ def _get(endpoint: str, params: dict, retries: int = 3,
             res.raise_for_status()
             data = res.json()
 
-            # בדיקת מכסה בתוך גוף התגובה
             if "errors" in data and data["errors"]:
                 err = data["errors"]
                 print(f"[API] ⚠️ שגיאת API: {err}", flush=True)
@@ -228,11 +142,6 @@ def reset_api_block():
 
 
 def get_all_active_leagues() -> list[dict]:
-    """
-    מגלה דינמית את כל ליגות הכדורגל הפעילות.
-    Cache יומי — קריאה אחת בלבד ביום.
-    מחזיר: [{"id", "name", "country", "season"}, ...]
-    """
     data    = _get("leagues", {"current": "true", "type": "League"}, use_cache=True)
     leagues = []
 
@@ -263,8 +172,8 @@ def get_all_fixtures() -> list[dict]:
     """
     מושך את כל משחקי הכדורגל הפעילים בעולם.
 
-    שלב 1 — כל משחקי היום (תאריך נוכחי, ללא סינון ליגה).
-    שלב 2 — מונדיאל 2026 — כל הטורניר (cache יומי).
+    שלב 1 — כל משחקי היום (תאריך נוכחי).
+    שלב 2 — מונדיאל 2026 — 7 ימים אחורה + 7 ימים קדימה בלבד (לא כל הטורניר!).
     שלב 3 — ליגות דינמיות — 7 ימים קדימה (מוגבל ל-50 ליגות).
 
     עוצר אוטומטית אם ה-API חסום.
@@ -275,6 +184,7 @@ def get_all_fixtures() -> list[dict]:
 
     today     = date.today().strftime("%Y-%m-%d")
     next_week = (date.today() + timedelta(days=7)).strftime("%Y-%m-%d")
+    last_week = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
     all_fixtures: dict = {}
 
     # ── שלב 1: כל משחקי היום ────────────────────────────────────────────────
@@ -290,13 +200,14 @@ def get_all_fixtures() -> list[dict]:
     if _API_BLOCKED:
         return _sorted_fixtures(all_fixtures)
 
-    # ── שלב 2: מונדיאל 2026 — כל הטורניר ───────────────────────────────────
-    wc_data  = _get("fixtures", {
+    # ── שלב 2: מונדיאל 2026 — 7 ימים אחורה + 7 ימים קדימה בלבד ─────────────
+    # לא מושך את כל הטורניר — מונע עדכון Elo מיותר של עשרות משחקים ישנים
+    wc_data = _get("fixtures", {
         "league": WC_LEAGUE_ID,
         "season": WC_SEASON,
-        "from":   WC_FROM,
-        "to":     WC_TO,
-    }, use_cache=True)
+        "from":   last_week,
+        "to":     next_week,
+    })
     wc_added = 0
     for f in wc_data.get("response", []):
         fid = f["fixture"]["id"]
@@ -310,9 +221,8 @@ def get_all_fixtures() -> list[dict]:
 
     # ── שלב 3: ליגות דינמיות — 7 ימים קדימה ────────────────────────────────
     active_leagues  = get_all_active_leagues()
-    MAX_LEAGUES     = 50  # מגביל למניעת rate limit
+    MAX_LEAGUES     = 50
 
-    # סינון כפול: (1) Whitelist בלבד, (2) לא מונדיאל (כבר נכלל בשלב 2)
     leagues_to_scan = [
         l for l in active_leagues
         if l["id"] != WC_LEAGUE_ID
@@ -323,6 +233,7 @@ def get_all_fixtures() -> list[dict]:
     skipped_leagues = len([l for l in active_leagues if l["id"] != WC_LEAGUE_ID]) - len(leagues_to_scan)
     if skipped_leagues > 0:
         print(f"[API] שלב 3 — מדלג על {skipped_leagues} ליגות לא-רלוונטיות (Whitelist)", flush=True)
+
     for league_info in leagues_to_scan:
         if _API_BLOCKED:
             print("[API] ⛔ Rate limit — עוצר שלב 3", flush=True)
@@ -368,7 +279,6 @@ def get_injuries(fixture_id: int) -> list[dict]:
 
 
 def get_odds(fixture_id: int) -> dict | None:
-    """Fallback odds מ-API-Football (כשאין Odds API)."""
     data = _get("odds", {"fixture": fixture_id})
     try:
         response_item = data["response"][0]
@@ -377,14 +287,14 @@ def get_odds(fixture_id: int) -> dict | None:
 
         target = None
         for bm in bookmakers:
-            if bm["id"] == 4:  # Pinnacle
+            if bm["id"] == 4:
                 target = bm
                 break
         if not target:
             target = bookmakers[0]
 
         for bet in target["bets"]:
-            if bet["id"] == 1:  # Match Winner
+            if bet["id"] == 1:
                 result = {}
                 for v in bet["values"]:
                     if v["value"] == "Home":   result["home"] = float(v["odd"])
