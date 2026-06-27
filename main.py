@@ -7,6 +7,7 @@ main.py — Pipeline ראשי v5 (דינמי + Rate-Limit Safe)
 - Cache יומי — חסכוני בקריאות
 """
 
+import hashlib
 from datetime import datetime, timezone
 
 from api_client import (get_all_fixtures, get_all_active_leagues,
@@ -24,11 +25,6 @@ _CURRENT_RHO = DEFAULT_RHO
 
 
 def _load_games_played() -> dict:
-    """
-    טוען מ-Supabase את מספר המשחקים האמיתי לכל קבוצה.
-    מחזיר {team_id: games_played}.
-    משמש ל-Elo Confidence Discount — קריטי למניעת EV מנופח.
-    """
     try:
         import os
         from supabase import create_client
@@ -73,7 +69,6 @@ def run_pipeline(verbose: bool = True):
     if verbose:
         print("🚀 Pipeline v5 — דינמי + Rate-Limit Safe", flush=True)
 
-    # ── שלב 0: גילוי דינמי (cache יומי — כמעט ללא קריאות API) ───────────────
     if verbose:
         print("🔍 מגלה ליגות וענפי ספורט...", flush=True)
 
@@ -84,10 +79,8 @@ def run_pipeline(verbose: bool = True):
         print(f"   ✅ {len(active_leagues)} ליגות כדורגל", flush=True)
         print(f"   ✅ {len(active_sports)} ענפי ספורט", flush=True)
 
-    # ── שלב 1: כיול rho ──────────────────────────────────────────────────────
     rho = _auto_calibrate_rho(verbose)
 
-    # ── שלב 2: Odds Batch — קריאה דינמית אחת לכל הספורט ─────────────────────
     if verbose:
         print("📡 שואב Odds Batch...", flush=True)
 
@@ -99,12 +92,8 @@ def run_pipeline(verbose: bool = True):
     if verbose:
         print(f"   ✅ {len(odds_batch)//2} משחקים עם odds", flush=True)
 
-    # ── שלב 2.5: games_played אמיתי מ-Supabase ───────────────────────────────
-    # קריטי: מונע EV מנופח לקבוצות עם FIFA Starting Elo גבוה (כמו קולומביה, גאנה)
-    # שטרם שיחקו מספיק משחקים להתכנסות Elo אמיתית.
     gp_cache = _load_games_played()
 
-    # ── שלב 3: Fixtures מ-API-Football (כדורגל בלבד) ─────────────────────────
     fixtures = get_all_fixtures()
 
     if is_api_blocked():
@@ -142,11 +131,6 @@ def _process_match(match: dict, verbose: bool,
                    rho: float = DEFAULT_RHO,
                    odds_batch: dict | None = None,
                    gp_cache: dict | None = None) -> str:
-    """
-    מעבד משחק אחד.
-    מחזיר "ok" אם עובד, "skipped" אם דולג.
-    gp_cache: {team_id: games_played} — נטען פעם אחת ב-run_pipeline.
-    """
     fix        = match["fixture"]
     fixture_id = fix["id"]
     match_date = fix["date"]
@@ -157,9 +141,6 @@ def _process_match(match: dict, verbose: bool,
     home = match["teams"]["home"]
     away = match["teams"]["away"]
 
-    # ── has_draw: נקבע מה-Odds API בלבד ─────────────────────────────────────
-    # API-Football = כדורגל בלבד → ברירת מחדל has_draw=True
-    # אם המשחק קיים ב-odds_batch → ה-Odds API קובע (תומך ב-2-way)
     has_draw      = True
     odds          = {}
     odds_updated_at = None
@@ -168,7 +149,7 @@ def _process_match(match: dict, verbose: bool,
     if odds_batch:
         live = lookup_odds_from_batch(odds_batch, home["name"], away["name"])
         if live:
-            has_draw       = live.get("has_draw", True)
+            has_draw        = live.get("has_draw", True)
             odds_updated_at = live.get("last_update")
             odds_bookmaker  = live.get("home_book", "Best Line")
             if has_draw:
@@ -176,18 +157,13 @@ def _process_match(match: dict, verbose: bool,
             else:
                 odds = {k: live.get(k) for k in ["home","away"] if live.get(k)}
         else:
-            # ── עקרון עצמאות נתונים ─────────────────────────────────────────
-            # אם המשחק לא ב-odds_batch ול-API-Football אין odds → דלג
-            # זה מונע חישוב כדורגל על ספורט לא מוכר
             fallback = get_odds(fixture_id)
             if fallback:
                 odds            = {k: fallback[k] for k in ["home","draw","away"] if k in fallback}
                 odds_updated_at = fallback.get("updated_at")
                 odds_bookmaker  = fallback.get("bookmaker")
-                has_draw        = True  # fallback = תמיד כדורגל
-            # אם גם fallback ריק — ממשיכים בלי odds (עדיין מנתחים)
+                has_draw        = True
 
-    # ── Elo ──────────────────────────────────────────────────────────────────
     elo_home = get_team_elo(home["id"], default=None)
     elo_away = get_team_elo(away["id"], default=None)
     if elo_home is None:
@@ -197,14 +173,12 @@ def _process_match(match: dict, verbose: bool,
         elo_away = get_starting_elo(away["name"])
         upsert_team(away["id"], away["name"], elo=elo_away)
 
-    # ── Form Factor ───────────────────────────────────────────────────────────
     try:
         form_home = calculate_form_factor(get_team_last_matches(home["id"], last=5), home["id"])
         form_away = calculate_form_factor(get_team_last_matches(away["id"], last=5), away["id"])
     except Exception:
         form_home = form_away = 1.0
 
-    # ── ניתוח מלא (3-way או 2-way לפי has_draw) ──────────────────────────────
     gp_h = (gp_cache or {}).get(home["id"], -1)
     gp_a = (gp_cache or {}).get(away["id"], -1)
 
@@ -220,7 +194,6 @@ def _process_match(match: dict, verbose: bool,
         games_away=gp_a,
     )
 
-    # ── שמירת משחק ───────────────────────────────────────────────────────────
     match_data = {
         "fixture_id":      fixture_id,
         "match_date":      match_date,
@@ -240,7 +213,6 @@ def _process_match(match: dict, verbose: bool,
         "has_draw":        has_draw,
     }
 
-    # ── משחק שהסתיים → עדכון Elo ─────────────────────────────────────────────
     home_goals = away_goals = None
     if status in ("FT","AET","PEN"):
         k = dynamic_k(round_name)
@@ -281,7 +253,6 @@ def _process_match(match: dict, verbose: bool,
 
     upsert_match(match_data)
 
-    # ── A/B Testing ───────────────────────────────────────────────────────────
     if has_draw:
         elo_pure     = match_probabilities(elo_home, elo_away, rho=rho)
         fifa         = fifa_probabilities(home["name"], away["name"])
@@ -364,8 +335,6 @@ def run_non_football_pipeline(verbose: bool = True):
     Pipeline לספורט לא-כדורגל (NBA, NHL, Tennis, MLB, MMA, Boxing וכו').
     עובד ישירות מה-Odds Batch — ללא Football API בכלל.
     שומר predictions ב-Supabase לשימוש ב-Value Bets scan.
-
-    ספורטים מכוסים: כל מה ש-Odds API מחזיר שאינו כדורגל.
     """
     from engine import detect_sport_from_key, sport_has_draw, SPORT_KEY_MAP
 
@@ -376,38 +345,33 @@ def run_non_football_pipeline(verbose: bool = True):
         print("[NFP] ⛔ Odds API חסום — מדלג", flush=True)
         return
 
-    # ── Odds Batch — כבר נטען ב-run_pipeline, אבל נשלוף מחדש (cache) ────────
     odds_batch = get_all_odds_batch()
     if not odds_batch:
         print("[NFP] ⚠️ Odds Batch ריק", flush=True)
         return
-
 
     gp_cache = _load_games_played()
     rho      = _CURRENT_RHO
     count    = 0
     skipped  = 0
 
-    # עובר על כל האירועים ב-Batch שאינם כדורגל
     seen_pairs: set = set()
 
     for (home_name, away_name), odds_data in odds_batch.items():
-        # הבatch מכיל כל זוג פעמיים (lower + original)
-        # נעבד רק את הגרסה lower-case (הייחודית)
+        # עבד רק גרסה lower-case
         if home_name != home_name.lower() or away_name != away_name.lower():
-            continue  # דלג על הגרסה original — lower-case כבר מכוסה
+            continue
 
         sport_key = odds_data.get("sport_key", "")
         if not sport_key:
             continue
 
-        # דלג על כדורגל — מטופל ב-run_pipeline
+        # דלג על כדורגל
         if sport_key.startswith("soccer_"):
             continue
 
-        # ודא שה-sport_key מוכר
-        sport = detect_sport_from_key(sport_key)
-        has_draw = sport_has_draw(sport)  # כמעט תמיד False לספורט לא-כדורגל
+        sport    = detect_sport_from_key(sport_key)
+        has_draw = sport_has_draw(sport)
 
         pair_key = f"{home_name}::{away_name}::{sport_key}"
         if pair_key in seen_pairs:
@@ -426,16 +390,11 @@ def run_non_football_pipeline(verbose: bool = True):
                 skipped += 1
                 continue
 
-        # Elo — מחפש ב-DB, אחרת 1400 ברירת מחדל
-        # לספורט לא-כדורגל אין team_id מ-Football API → משתמש בשם
-        try:
-            from supabase import create_client
-            import os, hashlib
-            db = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-            # team_id = hash של שם הקבוצה (עקבי בין הרצות)
-            home_id = int(hashlib.md5(home_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
-            away_id = int(hashlib.md5(away_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
+        # Elo — MD5 hash יציב של שם הקבוצה
+        home_id = int(hashlib.md5(home_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
+        away_id = int(hashlib.md5(away_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
 
+        try:
             elo_h = get_team_elo(home_id, default=None)
             elo_a = get_team_elo(away_id, default=None)
 
@@ -447,7 +406,6 @@ def run_non_football_pipeline(verbose: bool = True):
                 upsert_team(away_id, away_name, elo=elo_a)
         except Exception:
             elo_h = elo_a = 1400.0
-            home_id = away_id = 0
 
         gp_h = gp_cache.get(home_id, -1)
         gp_a = gp_cache.get(away_id, -1)
@@ -461,12 +419,18 @@ def run_non_football_pipeline(verbose: bool = True):
             games_away=gp_a,
         )
 
-        fixture_id = abs(hash(f"{home_name}{away_name}{sport_key}")) % 2_000_000_000
+        # fixture_id יציב — MD5 של home+away+sport_key
+        fixture_id = int(hashlib.md5(
+            f"{home_name}{away_name}{sport_key}".encode()
+        ).hexdigest()[:12], 16) % 2_000_000_000
+
+        # match_date — שלוף מה-commence_time אם קיים, אחרת last_update
+        match_date = odds_data.get("commence_time") or odds_data.get("last_update", "")
 
         pred = {
             "home_team_name":     home_name,
             "away_team_name":     away_name,
-            "match_date":         odds_data.get("last_update", ""),
+            "match_date":         match_date,
             "home_team_id":       home_id,
             "away_team_id":       away_id,
             "elo_home":           elo_h,
