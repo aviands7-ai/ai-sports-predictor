@@ -173,11 +173,8 @@ def _process_match(match: dict, verbose: bool,
         elo_away = get_starting_elo(away["name"])
         upsert_team(away["id"], away["name"], elo=elo_away)
 
-    try:
-        form_home = calculate_form_factor(get_team_last_matches(home["id"], last=5), home["id"])
-        form_away = calculate_form_factor(get_team_last_matches(away["id"], last=5), away["id"])
-    except Exception:
-        form_home = form_away = 1.0
+    # Form Factor מבוטל — חוסך 1,270+ קריאות API ביום
+    form_home = form_away = 1.0
 
     gp_h = (gp_cache or {}).get(home["id"], -1)
     gp_a = (gp_cache or {}).get(away["id"], -1)
