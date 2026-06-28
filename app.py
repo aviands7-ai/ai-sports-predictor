@@ -550,25 +550,25 @@ with tab_intel:
             d         = decision
             flag_h    = get_flag_url(home["name"])
             flag_a    = get_flag_url(away["name"])
-            flag_img_h = f'<img src="{flag_h}" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_h else ""
-            flag_img_a = f'<img src="{flag_a}" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_a else ""
+            flag_img_h = f'<img src="{flag_h}" onerror="this.style.display=\'none\'" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_h else ""
+            flag_img_a = f'<img src="{flag_a}" onerror="this.style.display=\'none\'" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_a else ""
 
             # כותרת
             st.markdown(f"""
-<div style="border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin:16px 0;direction:rtl">
+<div style="border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin:16px 0;direction:rtl;background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
   <div style="text-align:center;font-size:12px;color:#6b7280;margin-bottom:16px">
     🏟️ {md['venue']}, {md['city']} &nbsp;·&nbsp; {md['match_time']} 🇮🇱 &nbsp;·&nbsp; {md['match_date']}
     {"&nbsp;·&nbsp; 🎾 2-way" if not has_draw else ""}
   </div>
   <table style="width:100%;border-collapse:collapse">
     <tr>
-      <td style="text-align:right;vertical-align:middle;padding:0 16px 0 0">
+      <td style="text-align:center;width:40%;vertical-align:middle;padding:0">
         {flag_img_h}
         <div style="font-size:22px;font-weight:600;margin-top:8px">{home['name']}</div>
         <div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {elo_h:.0f}</div>
       </td>
-      <td style="text-align:center;width:80px;font-size:16px;color:#9ca3af;font-weight:500">VS</td>
-      <td style="text-align:left;vertical-align:middle;padding:0 0 0 16px">
+      <td style="text-align:center;width:20%;font-size:16px;color:#9ca3af;font-weight:500">VS</td>
+      <td style="text-align:center;width:40%;vertical-align:middle;padding:0">
         {flag_img_a}
         <div style="font-size:22px;font-weight:600;margin-top:8px">{away['name']}</div>
         <div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {elo_a:.0f}</div>
@@ -628,13 +628,16 @@ with tab_intel:
                 st.markdown("#### 🔄 נתוני עבר (H2H)")
                 h2h_rows = []
                 for m in h2h[:5]:
-                    hg = m["goals"]["home"] or 0
-                    ag = m["goals"]["away"] or 0
+                    goals = m.get("goals") or {}
+                    hg = goals.get("home") if isinstance(goals, dict) else None
+                    ag = goals.get("away") if isinstance(goals, dict) else None
+                    score_str = f"{hg}-{ag}" if hg is not None and ag is not None else "—"
+                    teams = m.get("teams", {})
                     h2h_rows.append({
-                        "תאריך": m["fixture"]["date"][:10],
-                        "ביתי": m["teams"]["home"]["name"],
-                        "תוצאה": f"{hg}-{ag}",
-                        "אורח": m["teams"]["away"]["name"],
+                        "תאריך": m.get("fixture", {}).get("date", "")[:10],
+                        "ביתי":  teams.get("home", {}).get("name", "Unknown"),
+                        "תוצאה": score_str,
+                        "אורח":  teams.get("away", {}).get("name", "Unknown"),
                     })
                 st.dataframe(pd.DataFrame(h2h_rows), hide_index=True, use_container_width=True)
 
