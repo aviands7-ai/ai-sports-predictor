@@ -42,12 +42,13 @@ def _load_games_played() -> dict:
         return {}
 
 
-def _auto_calibrate_rho(verbose: bool = True) -> float:
+def _auto_calibrate_rho(verbose: bool = True, days_lookback: int = 30) -> float:
     global _CURRENT_RHO
-    matches = load_matches_for_calibration()
+    matches = load_matches_for_calibration(days_lookback=days_lookback)
     result  = calibrate_rho(matches)
     if verbose:
-        print(f"🔧 כיול Dixon-Coles rho: {result['message']}", flush=True)
+        n = result.get("n", 0)
+        print(f"🔧 כיול Dixon-Coles rho ({days_lookback} ימים, {n} משחקים): {result['message']}", flush=True)
     _CURRENT_RHO = result["recommended_rho"]
     return _CURRENT_RHO
 
