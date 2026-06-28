@@ -618,8 +618,8 @@ with tab_value:
                     "Elo ביטחון":  f"{elo_confidence:.0%}",
                 }
 
-                # NFP עם Elo לא מכויל → Unverified (לא לביצוע)
-                if is_nfp and elo_confidence < 0.5:
+                # סף אחיד 0.70 לכולם — כדורגל ו-NFP
+                if elo_confidence < 0.70:
                     unverified_rows.append(row)
                 else:
                     value_rows.append(row)
@@ -643,10 +643,9 @@ with tab_value:
             st.dataframe(df_vb, hide_index=True, use_container_width=True)
             st.metric("Value Bets שנמצאו", len(df_vb))
 
-        # ── Unverified Opportunities (Elo טרם התכנס) ─────────────────────────
         if unverified_rows:
-            with st.expander(f"⚠️ הזדמנויות לא מאומתות ({len(unverified_rows)}) — Elo טרם התכנס, לא לביצוע"):
-                st.caption("אירועי NFP שבהם ה-Elo הוא ברירת מחדל (1400). ה-EV לא אמין — המודל לא מכיר את הקבוצות.")
+            with st.expander(f"⚠️ הזדמנויות לא מאומתות ({len(unverified_rows)}) — Elo < 70%, לא לביצוע"):
+                st.caption("הימורים שלא עברו את סף הביטחון (Elo < 70%). EV לא אמין — המודל לא מכיר מספיק את הקבוצות.")
                 df_uv = pd.DataFrame(unverified_rows).sort_values("EV", ascending=False)
                 st.dataframe(df_uv, hide_index=True, use_container_width=True)
 
