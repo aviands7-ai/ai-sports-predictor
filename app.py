@@ -555,28 +555,36 @@ with tab_intel:
             flag_img_a = f'<img src="{flag_a}" onerror="{_oe}" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_a else ""
 
             # כותרת
-            st.markdown(f"""
-<div style="border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin:16px 0;direction:rtl;background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
-  <div style="text-align:center;font-size:12px;color:#6b7280;margin-bottom:16px">
-    🏟️ {md['venue']}, {md['city']} &nbsp;·&nbsp; {md['match_time']} 🇮🇱 &nbsp;·&nbsp; {md['match_date']}
-    {"&nbsp;·&nbsp; 🎾 2-way" if not has_draw else ""}
-  </div>
-  <table style="width:100%;border-collapse:collapse">
-    <tr>
-      <td style="text-align:center;width:40%;vertical-align:middle;padding:0">
-        {flag_img_h}
-        <div style="font-size:22px;font-weight:600;margin-top:8px">{home['name']}</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {elo_h:.0f}</div>
-      </td>
-      <td style="text-align:center;width:20%;font-size:16px;color:#9ca3af;font-weight:500">VS</td>
-      <td style="text-align:center;width:40%;vertical-align:middle;padding:0">
-        {flag_img_a}
-        <div style="font-size:22px;font-weight:600;margin-top:8px">{away['name']}</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {elo_a:.0f}</div>
-      </td>
-    </tr>
-  </table>
-</div>""", unsafe_allow_html=True)
+            _sport_tag = "&nbsp;·&nbsp; 🎾 2-way" if not has_draw else ""
+            _venue     = md['venue']
+            _city      = md['city']
+            _time      = md['match_time']
+            _date      = md['match_date']
+            _elo_h     = f"{elo_h:.0f}"
+            _elo_a     = f"{elo_a:.0f}"
+            _name_h    = home['name']
+            _name_a    = away['name']
+            _html = (
+                f'<div style="border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin:16px 0;direction:rtl;background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
+                f'<div style="text-align:center;font-size:12px;color:#6b7280;margin-bottom:16px">'
+                f'🏟️ {_venue}, {_city} &nbsp;·&nbsp; {_time} 🇮🇱 &nbsp;·&nbsp; {_date} {_sport_tag}'
+                f'</div>'
+                f'<table style="width:100%;border-collapse:collapse"><tr>'
+                f'<td style="text-align:center;width:40%;vertical-align:middle;padding:0">'
+                f'{flag_img_h}'
+                f'<div style="font-size:22px;font-weight:600;margin-top:8px">{_name_h}</div>'
+                f'<div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {_elo_h}</div>'
+                f'</td>'
+                f'<td style="text-align:center;width:20%;font-size:16px;color:#9ca3af;font-weight:500">VS</td>'
+                f'<td style="text-align:center;width:40%;vertical-align:middle;padding:0">'
+                f'{flag_img_a}'
+                f'<div style="font-size:22px;font-weight:600;margin-top:8px">{_name_a}</div>'
+                f'<div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {_elo_a}</div>'
+                f'</td>'
+                f'</tr></table>'
+                f'</div>'
+            )
+            st.markdown(_html, unsafe_allow_html=True)
 
             # הסתברויות
             st.markdown("#### 📊 הסתברויות")
