@@ -413,15 +413,7 @@ with tab_intel:
 
                 if smart_match:
                     status_s = smart_match["fixture"]["status"]["short"]
-                    if status_s in ("1H","2H","HT","ET","BT","P"):
-                        st.markdown(
-                            '<span style="display:inline-flex;align-items:center;gap:6px;'
-                            'background:#fee2e2;color:#dc2626;font-size:13px;font-weight:700;'
-                            'padding:5px 14px;border-radius:20px;border:1px solid #fca5a5">'
-                            '🔴 LIVE — משחק חי עכשיו!</span>',
-                            unsafe_allow_html=True
-                        )
-                    elif status_s in ("NS","TBD"):
+                    if status_s in ("NS","TBD"):
                         st.caption(f"⏰ המשחק הקרוב — {utc_to_israel(smart_match['fixture']['date'])} 🇮🇱")
 
                 selected_name = st.selectbox(
