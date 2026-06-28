@@ -501,7 +501,15 @@ with tab_value:
                 return []
 
         with st.spinner("טוען משחקים מה-DB..."):
-            db_predictions = load_upcoming_from_db()
+            db_predictions_raw = load_upcoming_from_db()
+            # dedup לפי fixture_id
+            seen_ids = set()
+            db_predictions = []
+            for p in db_predictions_raw:
+                fid = p.get("fixture_id")
+                if fid not in seen_ids:
+                    seen_ids.add(fid)
+                    db_predictions.append(p)
 
         if not db_predictions:
             st.warning("לא נמצאו משחקים עתידיים ב-DB. הרץ Pipeline תחילה.")
@@ -582,7 +590,6 @@ with tab_value:
             elo_confidence = an.get("elo_confidence", 1.0)
             is_nfp = bool(pred.get("sport_key", ""))
 
-            # NFP — מדלג על סינון games_played (אין היסטוריה ב-DB)
             if not is_nfp:
                 MIN_GAMES_FOR_VB = 3
                 gp_min_known = [g for g in [gp_h, gp_a] if g >= 0]
@@ -597,7 +604,6 @@ with tab_value:
                     continue
                 if ev > EV_HARD_CAP:
                     continue
-                # NFP — מדלג על סינון elo_confidence (Elo = ברירת מחדל)
                 if not is_nfp and elo_confidence < 0.5:
                     continue
                 value_rows.append({
