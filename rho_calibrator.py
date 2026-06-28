@@ -125,18 +125,24 @@ def calibrate_rho(matches: list[dict]) -> dict:
     }
 
 
-def load_matches_for_calibration() -> list[dict]:
+def load_matches_for_calibration(days_lookback: int = 30) -> list[dict]:
     """
     טוען נתוני משחקים מ-Supabase לכיול.
     דורש: xg_home, xg_away, actual_home_goals, actual_away_goals.
+
+    days_lookback: חלון זמן בימים (ברירת מחדל: 30). Walk-Forward Optimization —
+    מכייל רק על נתונים אחרונים כדי להסתגל ליעילות השוק הנוכחית.
     """
     try:
         from supabase import create_client
+        from datetime import datetime, timedelta, timezone
         db = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_lookback)).strftime("%Y-%m-%dT%H:%M:%S")
+
         res = db.table("predictions").select(
-            "xg_home,xg_away,actual_home_goals,actual_away_goals"
-        ).not_.is_("actual_home_goals", "null").execute()
+            "xg_home,xg_away,actual_home_goals,actual_away_goals,match_date"
+        ).not_.is_("actual_home_goals", "null").gte("match_date", cutoff).execute()
 
         raw = res.data or []
         matches = [
@@ -151,6 +157,7 @@ def load_matches_for_calibration() -> list[dict]:
                and r.get("actual_home_goals") is not None
                and r.get("actual_away_goals") is not None
         ]
+        print(f"[RhoCalibrator] {len(matches)} משחקים בחלון {days_lookback} ימים אחרונים", flush=True)
         return matches
 
     except Exception as e:
