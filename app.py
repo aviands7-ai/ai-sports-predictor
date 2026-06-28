@@ -550,8 +550,9 @@ with tab_intel:
             d         = decision
             flag_h    = get_flag_url(home["name"])
             flag_a    = get_flag_url(away["name"])
-            flag_img_h = f'<img src="{flag_h}" onerror="this.style.display=\'none\'" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_h else ""
-            flag_img_a = f'<img src="{flag_a}" onerror="this.style.display=\'none\'" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_a else ""
+            _oe = "this.style.display='none'"
+            flag_img_h = f'<img src="{flag_h}" onerror="{_oe}" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_h else ""
+            flag_img_a = f'<img src="{flag_a}" onerror="{_oe}" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_a else ""
 
             # כותרת
             st.markdown(f"""
