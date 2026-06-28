@@ -254,12 +254,12 @@ def _to_decimal(odd) -> float:
 def _extract_odds(event: dict) -> list[dict]:
     """
     מחלץ odds מכל הבוקמייקרים.
-    תומך אוטומטית ב-3-way (draw קיים) וב-2-way (draw לא קיים).
+    has_draw נקבע דינמית מהנתונים — אם bookmaker מציע "draw", זה 3-way.
+    זה מונע "Normalization Illusion" שמנפח EV בענפים כמו CFL/Cricket/Boxing.
     """
     all_books      = []
     home_team_name = event.get("home_team", "").lower()
     away_team_name = event.get("away_team", "").lower()
-    has_draw       = event.get("_has_draw", False)
 
     for bm in event.get("bookmakers", []):
         bm_key   = bm["key"]
@@ -274,19 +274,20 @@ def _extract_odds(event: dict) -> list[dict]:
             raw_away = outcomes.get(away_team_name)
             raw_draw = outcomes.get("draw")
 
-            if has_draw:
-                if not (raw_home and raw_away and raw_draw):
-                    continue
-            else:
-                if not (raw_home and raw_away):
-                    continue
+            # זיהוי דינמי: אם הבוקמייקר מציע draw → 3-way
+            event_has_draw = raw_draw is not None
+
+            if not (raw_home and raw_away):
+                continue
+            if event_has_draw and not raw_draw:
+                continue
 
             home_d = _to_decimal(raw_home)
             away_d = _to_decimal(raw_away)
             draw_d = _to_decimal(raw_draw) if raw_draw else 0.0
 
-            check = [home_d, away_d] + ([draw_d] if has_draw and draw_d > 0 else [])
-            if any(x < 1.01 or x > 50 for x in check):
+            check = [home_d, away_d] + ([draw_d] if event_has_draw and draw_d > 0 else [])
+            if any(x < 1.01 or x > 100 for x in check):
                 continue
 
             all_books.append({
@@ -296,7 +297,7 @@ def _extract_odds(event: dict) -> list[dict]:
                 "draw":        draw_d,
                 "away":        away_d,
                 "last_update": market.get("last_update", ""),
-                "has_draw":    has_draw,
+                "has_draw":    event_has_draw,
             })
 
     return all_books
@@ -322,27 +323,32 @@ def get_all_odds_batch() -> dict:
         if not books:
             continue
 
+        # has_draw נקבע מהנתונים — רוב הבוקמייקרים מסכימים
+        draw_votes = sum(1 for b in books if b.get("has_draw", False))
+        event_has_draw = draw_votes > len(books) / 2  # רוב מסכים
+
         valid = [
             b for b in books
             if 1.01 <= b["home"] <= 100 and 1.01 <= b["away"] <= 100
-            and (not has_draw or 1.01 <= b["draw"] <= 25)
+            and (not event_has_draw or 1.01 <= b.get("draw", 0) <= 100)
+            and b.get("has_draw") == event_has_draw  # עקביות
         ]
         if not valid:
             continue
 
         best_home = max(valid, key=lambda b: b["home"])
-        best_draw = max(valid, key=lambda b: b["draw"]) if has_draw else None
+        best_draw = max(valid, key=lambda b: b.get("draw", 0)) if event_has_draw else None
         best_away = max(valid, key=lambda b: b["away"])
 
         odds_result = {
             "home":         best_home["home"],
             "home_book":    best_home["name"],
-            "draw":         best_draw["draw"] if best_draw else 0.0,
+            "draw":         best_draw.get("draw", 0.0) if best_draw else 0.0,
             "draw_book":    best_draw["name"] if best_draw else "",
             "away":         best_away["away"],
             "away_book":    best_away["name"],
             "last_update":  best_home.get("last_update", ""),
-            "has_draw":     has_draw,
+            "has_draw":     event_has_draw,
             "sport_key":    event.get("_sport_key", ""),
             "is_best_line": True,
         }
