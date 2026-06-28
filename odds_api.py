@@ -270,16 +270,32 @@ def _extract_odds(event: dict) -> list[dict]:
                 continue
 
             outcomes = {o["name"].lower(): o["price"] for o in market["outcomes"]}
+            raw_draw = outcomes.get("draw")
+
+            # חיפוש גמיש לשמות קבוצות (US sports — שמות לא תמיד מתאימים בדיוק)
             raw_home = outcomes.get(home_team_name)
             raw_away = outcomes.get(away_team_name)
-            raw_draw = outcomes.get("draw")
+
+            # אם לא נמצא בדיוק — חפש לפי מילים
+            if not raw_home:
+                for name, price in outcomes.items():
+                    if name == "draw":
+                        continue
+                    if any(w in name for w in home_team_name.split() if len(w) > 3):
+                        raw_home = price
+                        break
+            if not raw_away:
+                for name, price in outcomes.items():
+                    if name == "draw":
+                        continue
+                    if any(w in name for w in away_team_name.split() if len(w) > 3):
+                        raw_away = price
+                        break
 
             # זיהוי דינמי: אם הבוקמייקר מציע draw → 3-way
             event_has_draw = raw_draw is not None
 
             if not (raw_home and raw_away):
-                continue
-            if event_has_draw and not raw_draw:
                 continue
 
             home_d = _to_decimal(raw_home)
