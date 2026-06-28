@@ -413,15 +413,7 @@ with tab_intel:
 
                 if smart_match:
                     status_s = smart_match["fixture"]["status"]["short"]
-                    if status_s in ("1H","2H","HT","ET","BT","P"):
-                        st.markdown(
-                            '<span style="display:inline-flex;align-items:center;gap:6px;'
-                            'background:#fee2e2;color:#dc2626;font-size:13px;font-weight:700;'
-                            'padding:5px 14px;border-radius:20px;border:1px solid #fca5a5">'
-                            '🔴 LIVE — משחק חי עכשיו!</span>',
-                            unsafe_allow_html=True
-                        )
-                    elif status_s in ("NS","TBD"):
+                    if status_s in ("NS","TBD"):
                         st.caption(f"⏰ המשחק הקרוב — {utc_to_israel(smart_match['fixture']['date'])} 🇮🇱")
 
                 selected_name = st.selectbox(
@@ -544,6 +536,9 @@ with tab_intel:
                 "league_id": _league_id,
                 "league_name": _league.get("name", ""),
                 "league_logo": _league.get("logo", ""),
+                "league_country": _league.get("country", ""),
+                "league_flag": _league.get("flag", ""),
+                "league_type": _league.get("type", ""),
                 "round": _round,
                 "is_live": _is_live,
             }
@@ -572,11 +567,18 @@ with tab_intel:
             flag_img_a = f'<img src="{flag_a}" onerror="{_oe}" style="width:64px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;display:block;margin:0 auto 8px">' if flag_a else ""
 
             # מידע ליגה / שלב
-            _league_id   = md.get("league_id", 0)
-            _round       = md.get("round", "")
-            _league_logo = md.get("league_logo", "")
-            _is_live     = md.get("is_live", False)
-            _is_wc       = _league_id == 1  # FIFA World Cup
+            _league_id      = md.get("league_id", 0)
+            _round          = md.get("round", "")
+            _league_logo    = md.get("league_logo", "")
+            _league_name    = md.get("league_name", "")
+            _league_country = md.get("league_country", "")
+            _league_flag    = md.get("league_flag", "")
+            _league_type    = md.get("league_type", "")
+            _is_live        = md.get("is_live", False)
+            _is_wc          = _league_id == 1  # FIFA World Cup
+
+            # תיאור סוג הליגה
+            _type_heb = {"League": "ליגה", "Cup": "גביע", "Tournament": "טורניר"}.get(_league_type, _league_type)
 
             # שלב מונדיאל — מעברית
             _round_heb = ""
@@ -597,10 +599,15 @@ with tab_intel:
                 else:
                     _round_heb = _round
 
-            # דגל ליגה / לוגו
-            _league_img = ""
-            if _league_logo:
-                _league_img = f'<img src="{_league_logo}" onerror="{_oe}" style="height:24px;vertical-align:middle;margin-left:6px">'
+            # לוגו ליגה + מדינה + סוג
+            _oe_flag = "this.style.display='none'"
+            _league_logo_img = f'<img src="{_league_logo}" onerror="{_oe_flag}" style="height:32px;margin-bottom:4px;display:block;margin:0 auto 4px">' if _league_logo else ""
+            _country_flag_img = f'<img src="{_league_flag}" onerror="{_oe_flag}" style="height:14px;vertical-align:middle;margin-left:3px">' if _league_flag else ""
+            _league_img = (
+                _league_logo_img
+                + f'<div style="font-size:10px;color:#64748b;margin-top:4px">{_country_flag_img}{_league_country}</div>'
+                + (f'<div style="font-size:10px;color:#94a3b8">{_type_heb} · {_league_name}</div>' if _league_name else "")
+            )
 
             # Live badge
             _live_badge = ""
@@ -698,16 +705,12 @@ with tab_intel:
                 _a_short = away["name"]
                 score_cols = st.columns(min(len(analysis["top_scores"]), 5))
                 for col, (sc, prob) in zip(score_cols, analysis["top_scores"][:5]):
-                    # sc = "1-0" — ביתי-אורח
                     parts = sc.split("-")
                     if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                        hg, ag = int(parts[0]), int(parts[1])
-                        if hg > ag:
-                            winner = f"🏠 {_h_short}"
-                        elif ag > hg:
-                            winner = f"✈️ {_a_short}"
-                        else:
-                            winner = "🤝 תיקו"
+                        hg_s, ag_s = int(parts[0]), int(parts[1])
+                        if hg_s > ag_s:   winner = f"🏠 {_h_short}"
+                        elif ag_s > hg_s: winner = f"✈️ {_a_short}"
+                        else:             winner = "🤝 תיקו"
                         col.metric(label=f"{sc}  ({winner})", value=f"{prob}%")
                     else:
                         col.metric(label=sc, value=f"{prob}%")
@@ -725,15 +728,9 @@ with tab_intel:
                     a_name = teams.get("away", {}).get("name", "?")
                     if hg is not None and ag is not None:
                         hg, ag = int(hg), int(ag)
-                        if hg > ag:
-                            result_icon = "🏠"
-                            winner_str  = h_name
-                        elif ag > hg:
-                            result_icon = "✈️"
-                            winner_str  = a_name
-                        else:
-                            result_icon = "🤝"
-                            winner_str  = "תיקו"
+                        if hg > ag:   result_icon, winner_str = "🏠", h_name
+                        elif ag > hg: result_icon, winner_str = "✈️", a_name
+                        else:         result_icon, winner_str = "🤝", "תיקו"
                         score_str = f"{result_icon} {hg}-{ag} ({winner_str})"
                     else:
                         score_str = "—"
