@@ -550,7 +550,7 @@ with tab_value:
                         continue
                 else:
                     odds = {k: live.get(k) for k in ["home","away"] if live.get(k)}
-                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 25
+                    if not all(isinstance(odds.get(k), float) and 1.01 <= odds.get(k,0) <= 100
                                for k in ["home","away"]):
                         continue
 
@@ -573,7 +573,7 @@ with tab_value:
                 games_away=gp_a,
             )
 
-            sport_key  = live.get("sport_key", "") if live else ""
+            sport_key  = (live.get("sport_key", "") if live else "") or pred.get("sport_key", "")
             sport_disp = sport_label(sport_key) if sport_key else "⚽ כדורגל"
 
             outcomes = ["home","away"] if not has_draw else ["home","draw","away"]
