@@ -413,7 +413,15 @@ with tab_intel:
 
                 if smart_match:
                     status_s = smart_match["fixture"]["status"]["short"]
-                    if status_s in ("NS","TBD"):
+                    if status_s in ("1H","2H","HT","ET","BT","P"):
+                        st.markdown(
+                            '<span style="display:inline-flex;align-items:center;gap:6px;'
+                            'background:#fee2e2;color:#dc2626;font-size:13px;font-weight:700;'
+                            'padding:5px 14px;border-radius:20px;border:1px solid #fca5a5">'
+                            '🔴 LIVE — משחק חי עכשיו!</span>',
+                            unsafe_allow_html=True
+                        )
+                    elif status_s in ("NS","TBD"):
                         st.caption(f"⏰ המשחק הקרוב — {utc_to_israel(smart_match['fixture']['date'])} 🇮🇱")
 
                 selected_name = st.selectbox(
@@ -536,8 +544,6 @@ with tab_intel:
                 "league_id": _league_id,
                 "league_name": _league.get("name", ""),
                 "league_logo": _league.get("logo", ""),
-                "league_country": _league.get("country", ""),
-                "league_flag": _league.get("flag", ""),
                 "round": _round,
                 "is_live": _is_live,
             }
@@ -566,14 +572,11 @@ with tab_intel:
             flag_img_a = f'<img src="{flag_a}" onerror="{_oe}" style="width:64px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;display:block;margin:0 auto 8px">' if flag_a else ""
 
             # מידע ליגה / שלב
-            _league_id      = md.get("league_id", 0)
-            _round          = md.get("round", "")
-            _league_logo    = md.get("league_logo", "")
-            _league_name    = md.get("league_name", "")
-            _league_country = md.get("league_country", "")
-            _league_flag    = md.get("league_flag", "")
-            _is_live        = md.get("is_live", False)
-            _is_wc          = _league_id == 1  # FIFA World Cup
+            _league_id   = md.get("league_id", 0)
+            _round       = md.get("round", "")
+            _league_logo = md.get("league_logo", "")
+            _is_live     = md.get("is_live", False)
+            _is_wc       = _league_id == 1  # FIFA World Cup
 
             # שלב מונדיאל — מעברית
             _round_heb = ""
@@ -597,13 +600,7 @@ with tab_intel:
             # דגל ליגה / לוגו
             _league_img = ""
             if _league_logo:
-                _league_img = f'<img src="{_league_logo}" onerror="{_oe}" style="height:28px;vertical-align:middle;margin-bottom:4px">'
-            _country_flag_img = ""
-            if _league_flag:
-                _country_flag_img = f'<img src="{_league_flag}" onerror="{_oe}" style="height:14px;vertical-align:middle;margin-left:4px">'
-            _league_info = ""
-            if _league_name:
-                _league_info = f'<div style="font-size:11px;color:#94a3b8;margin-top:4px">{_country_flag_img} {_league_country} · {_league_name}</div>'
+                _league_img = f'<img src="{_league_logo}" onerror="{_oe}" style="height:24px;vertical-align:middle;margin-left:6px">'
 
             # Live badge
             _live_badge = ""
@@ -644,7 +641,6 @@ with tab_intel:
                 f'<td style="text-align:center;width:20%">'
                 f'{_league_img}'
                 f'<div style="font-size:14px;color:#cbd5e1;font-weight:600;margin-top:4px">VS</div>'
-                f'{_league_info}'
                 f'</td>'
                 f'<td style="text-align:center;width:40%;vertical-align:middle;padding:0">'
                 f'{flag_img_a}'
@@ -692,18 +688,29 @@ with tab_intel:
                         "Kelly %": f"{a.get('kelly_pct',0):.1f}%",
                     })
             if value_rows:
-                st.markdown("<div style='text-align:right;direction:rtl'><h4>💰 Value Bets</h4></div>", unsafe_allow_html=True)
+                st.markdown("#### 💰 Value Bets")
                 st.dataframe(pd.DataFrame(value_rows), hide_index=True, use_container_width=True)
 
             # תוצאות סבירות (כדורגל בלבד)
             if has_draw and analysis.get("top_scores"):
                 st.markdown("<div style='text-align:right;direction:rtl'><h4>🎯 תוצאות סבירות</h4></div>", unsafe_allow_html=True)
-                _h_name = home["name"].split()[-1]  # שם קצר
-                _a_name = away["name"].split()[-1]
-                st.caption(f"פורמט: {_h_name} — {_a_name} (ביתי — אורח)")
+                _h_short = home["name"]
+                _a_short = away["name"]
                 score_cols = st.columns(min(len(analysis["top_scores"]), 5))
                 for col, (sc, prob) in zip(score_cols, analysis["top_scores"][:5]):
-                    col.metric(label=sc, value=f"{prob}%")
+                    # sc = "1-0" — ביתי-אורח
+                    parts = sc.split("-")
+                    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                        hg, ag = int(parts[0]), int(parts[1])
+                        if hg > ag:
+                            winner = f"🏠 {_h_short}"
+                        elif ag > hg:
+                            winner = f"✈️ {_a_short}"
+                        else:
+                            winner = "🤝 תיקו"
+                        col.metric(label=f"{sc}  ({winner})", value=f"{prob}%")
+                    else:
+                        col.metric(label=sc, value=f"{prob}%")
 
             # H2H
             if h2h:
@@ -713,13 +720,28 @@ with tab_intel:
                     goals = m.get("goals") or {}
                     hg = goals.get("home") if isinstance(goals, dict) else None
                     ag = goals.get("away") if isinstance(goals, dict) else None
-                    score_str = f"{hg}-{ag}" if hg is not None and ag is not None else "—"
                     teams = m.get("teams", {})
+                    h_name = teams.get("home", {}).get("name", "?")
+                    a_name = teams.get("away", {}).get("name", "?")
+                    if hg is not None and ag is not None:
+                        hg, ag = int(hg), int(ag)
+                        if hg > ag:
+                            result_icon = "🏠"
+                            winner_str  = h_name
+                        elif ag > hg:
+                            result_icon = "✈️"
+                            winner_str  = a_name
+                        else:
+                            result_icon = "🤝"
+                            winner_str  = "תיקו"
+                        score_str = f"{result_icon} {hg}-{ag} ({winner_str})"
+                    else:
+                        score_str = "—"
                     h2h_rows.append({
                         "תאריך":   m.get("fixture", {}).get("date", "")[:10],
-                        "🏠 ביתי": teams.get("home", {}).get("name", "?"),
+                        "🏠 ביתי": h_name,
                         "תוצאה":   score_str,
-                        "✈️ אורח": teams.get("away", {}).get("name", "?"),
+                        "✈️ אורח": a_name,
                     })
                 st.dataframe(pd.DataFrame(h2h_rows), hide_index=True, use_container_width=True)
 
