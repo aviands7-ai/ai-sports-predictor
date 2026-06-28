@@ -94,6 +94,14 @@ def _get(endpoint: str, params: dict, retries: int = 3,
         try:
             res = requests.get(url, headers=HEADERS, params=params, timeout=15)
 
+            # Preemptive Rate Limit Check
+            remaining = res.headers.get("x-ratelimit-requests-remaining")
+            if remaining and remaining.isdigit() and int(remaining) < 10:
+                _API_BLOCKED    = True
+                _BLOCKED_REASON = f"Preemptive Stop — נותרו רק {remaining} קריאות"
+                print(f"[API] ⚠️ עוצר מראש! נותרו רק {remaining} קריאות במכסה היומית.", flush=True)
+                # ממשיכים לעבד את התשובה הנוכחית, אבל הקריאות הבאות ייחסמו
+
             if res.status_code == 429:
                 _API_BLOCKED    = True
                 _BLOCKED_REASON = "Rate Limit (429) — חכה עד מחר"
@@ -195,7 +203,14 @@ def get_all_fixtures() -> list[dict]:
     for f in data.get("response", []):
         fid = f["fixture"]["id"]
         all_fixtures[fid] = f
-    print(f"[API] שלב 1 (היום): {len(all_fixtures)} משחקים", flush=True)
+
+    # Cache FT מהיום — לא נמשוך שוב בשלבים הבאים
+    _ft_ids_today: set = {
+        f["fixture"]["id"]
+        for f in data.get("response", [])
+        if f["fixture"]["status"]["short"] in ("FT","AET","PEN")
+    }
+    print(f"[API] שלב 1 (היום): {len(all_fixtures)} משחקים ({len(_ft_ids_today)} הסתיימו)", flush=True)
 
     if _API_BLOCKED:
         return _sorted_fixtures(all_fixtures)
@@ -211,9 +226,17 @@ def get_all_fixtures() -> list[dict]:
     wc_added = 0
     for f in wc_data.get("response", []):
         fid = f["fixture"]["id"]
-        if fid not in all_fixtures:
-            all_fixtures[fid] = f
-            wc_added += 1
+        status = f["fixture"]["status"]["short"]
+        # דלג על FT שכבר עובד בשלב 1
+        if fid in all_fixtures:
+            continue
+        # דלג על FT ישנים (לפני היום) — Elo כבר עודכן
+        if status in ("FT","AET","PEN"):
+            match_date = f["fixture"]["date"][:10]
+            if match_date < today:
+                continue
+        all_fixtures[fid] = f
+        wc_added += 1
     print(f"[API] שלב 2 (מונדיאל): +{wc_added} משחקים", flush=True)
 
     if _API_BLOCKED:
