@@ -387,9 +387,9 @@ def run_non_football_pipeline(verbose: bool = True):
                 skipped += 1
                 continue
 
-        # Elo — MD5 hash יציב של שם הקבוצה
-        home_id = int(hashlib.md5(home_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
-        away_id = int(hashlib.md5(away_name.encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
+        # Elo — MD5 hash יציב של sport_key + שם הקבוצה (מונע התנגשויות בין ענפים)
+        home_id = int(hashlib.md5(f"{sport_key}_{home_name}".encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
+        away_id = int(hashlib.md5(f"{sport_key}_{away_name}".encode()).hexdigest()[:8], 16) % 10_000_000 + 10_000_000
 
         try:
             elo_h = get_team_elo(home_id, default=None)
