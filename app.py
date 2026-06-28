@@ -414,7 +414,13 @@ with tab_intel:
                 if smart_match:
                     status_s = smart_match["fixture"]["status"]["short"]
                     if status_s in ("1H","2H","HT","ET","BT","P"):
-                        st.caption("🔴 משחק חי כרגע")
+                        st.markdown(
+                            '<span style="display:inline-flex;align-items:center;gap:6px;'
+                            'background:#fee2e2;color:#dc2626;font-size:13px;font-weight:700;'
+                            'padding:5px 14px;border-radius:20px;border:1px solid #fca5a5">'
+                            '🔴 LIVE — משחק חי עכשיו!</span>',
+                            unsafe_allow_html=True
+                        )
                     elif status_s in ("NS","TBD"):
                         st.caption(f"⏰ המשחק הקרוב — {utc_to_israel(smart_match['fixture']['date'])} 🇮🇱")
 
@@ -513,6 +519,12 @@ with tab_intel:
                     live_od, elo_h, elo_a,
                 )
 
+            _league    = selected.get("league", {})
+            _league_id = _league.get("id", 0)
+            _round     = _league.get("round", "")
+            _status_s  = selected["fixture"]["status"]["short"]
+            _is_live   = _status_s in ("1H","2H","HT","ET","BT","P")
+
             st.session_state["match_data"] = {
                 "home": home, "away": away, "venue": venue, "city": city,
                 "match_time": match_time,
@@ -529,6 +541,11 @@ with tab_intel:
                 "fatigue_data": fatigue_data,
                 "ensemble_data": ensemble_data,
                 "has_draw": has_draw,
+                "league_id": _league_id,
+                "league_name": _league.get("name", ""),
+                "league_logo": _league.get("logo", ""),
+                "round": _round,
+                "is_live": _is_live,
             }
 
         if "match_data" not in st.session_state:
@@ -550,12 +567,48 @@ with tab_intel:
             d         = decision
             flag_h    = get_flag_url(home["name"])
             flag_a    = get_flag_url(away["name"])
-            _oe = "this.style.display='none'"
-            flag_img_h = f'<img src="{flag_h}" onerror="{_oe}" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_h else ""
-            flag_img_a = f'<img src="{flag_a}" onerror="{_oe}" style="width:56px;height:38px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0">' if flag_a else ""
+            _oe       = "this.style.display='none'"
+            flag_img_h = f'<img src="{flag_h}" onerror="{_oe}" style="width:64px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;display:block;margin:0 auto 8px">' if flag_h else ""
+            flag_img_a = f'<img src="{flag_a}" onerror="{_oe}" style="width:64px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;display:block;margin:0 auto 8px">' if flag_a else ""
 
-            # כותרת
-            _sport_tag = "&nbsp;·&nbsp; 🎾 2-way" if not has_draw else ""
+            # מידע ליגה / שלב
+            _league_id   = md.get("league_id", 0)
+            _round       = md.get("round", "")
+            _league_logo = md.get("league_logo", "")
+            _is_live     = md.get("is_live", False)
+            _is_wc       = _league_id == 1  # FIFA World Cup
+
+            # שלב מונדיאל — מעברית
+            _round_heb = ""
+            if _is_wc and _round:
+                _r = _round.lower()
+                if "final" in _r and "semi" not in _r and "quarter" not in _r:
+                    _round_heb = "🏆 גמר"
+                elif "semi" in _r:
+                    _round_heb = "🥈 חצי גמר"
+                elif "quarter" in _r:
+                    _round_heb = "🎯 רבע גמר"
+                elif "round of 16" in _r or "last 16" in _r:
+                    _round_heb = "⚔️ 16 האחרונות"
+                elif "round of 32" in _r or "last 32" in _r:
+                    _round_heb = "⚔️ 32 האחרונות"
+                elif "group" in _r:
+                    _round_heb = f"🔵 שלב בתים"
+                else:
+                    _round_heb = _round
+
+            # דגל ליגה / לוגו
+            _league_img = ""
+            if _league_logo:
+                _league_img = f'<img src="{_league_logo}" onerror="{_oe}" style="height:24px;vertical-align:middle;margin-left:6px">'
+
+            # Live badge
+            _live_badge = ""
+            if _is_live:
+                _live_badge = '<span style="display:inline-flex;align-items:center;gap:5px;background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:0.05em">🔴 LIVE</span>'
+
+            # sport tag
+            _sport_tag = " · 🎾 2-way" if not has_draw else ""
             _venue     = md['venue']
             _city      = md['city']
             _time      = md['match_time']
@@ -564,30 +617,43 @@ with tab_intel:
             _elo_a     = f"{elo_a:.0f}"
             _name_h    = home['name']
             _name_a    = away['name']
-            _html = (
-                f'<div style="border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin:16px 0;direction:rtl;background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
-                f'<div style="text-align:center;font-size:12px;color:#6b7280;margin-bottom:16px">'
-                f'🏟️ {_venue}, {_city} &nbsp;·&nbsp; {_time} 🇮🇱 &nbsp;·&nbsp; {_date} {_sport_tag}'
+
+            _header = (
+                f'<div style="border:1px solid #e2e8f0;border-radius:14px;padding:20px 24px;margin:16px 0;'
+                f'background:#ffffff;box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
+                # Live badge + שלב
+                f'<div style="text-align:center;margin-bottom:12px">'
+                f'{_live_badge}'
+                + (f'<span style="display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:700;'
+                   f'padding:3px 10px;border-radius:20px;margin-right:6px">{_round_heb}</span>' if _round_heb else '')
+                + f'</div>'
+                # venue + time
+                f'<div style="text-align:center;font-size:12px;color:#94a3b8;margin-bottom:16px">'
+                f'🏟️ {_venue}, {_city} &nbsp;·&nbsp; {_time} 🇮🇱 &nbsp;·&nbsp; {_date}{_sport_tag}'
                 f'</div>'
+                # קבוצות
                 f'<table style="width:100%;border-collapse:collapse"><tr>'
                 f'<td style="text-align:center;width:40%;vertical-align:middle;padding:0">'
                 f'{flag_img_h}'
-                f'<div style="font-size:22px;font-weight:600;margin-top:8px">{_name_h}</div>'
-                f'<div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {_elo_h}</div>'
+                f'<div style="font-size:20px;font-weight:700;color:#0f172a">{_name_h}</div>'
+                f'<div style="font-size:12px;color:#94a3b8;margin-top:4px">Elo {_elo_h}</div>'
                 f'</td>'
-                f'<td style="text-align:center;width:20%;font-size:16px;color:#9ca3af;font-weight:500">VS</td>'
+                f'<td style="text-align:center;width:20%">'
+                f'{_league_img}'
+                f'<div style="font-size:14px;color:#cbd5e1;font-weight:600;margin-top:4px">VS</div>'
+                f'</td>'
                 f'<td style="text-align:center;width:40%;vertical-align:middle;padding:0">'
                 f'{flag_img_a}'
-                f'<div style="font-size:22px;font-weight:600;margin-top:8px">{_name_a}</div>'
-                f'<div style="font-size:12px;color:#6b7280;margin-top:4px">Elo {_elo_a}</div>'
+                f'<div style="font-size:20px;font-weight:700;color:#0f172a">{_name_a}</div>'
+                f'<div style="font-size:12px;color:#94a3b8;margin-top:4px">Elo {_elo_a}</div>'
                 f'</td>'
                 f'</tr></table>'
                 f'</div>'
             )
-            st.markdown(_html, unsafe_allow_html=True)
+            st.markdown(_header, unsafe_allow_html=True)
 
             # הסתברויות
-            st.markdown("#### 📊 הסתברויות")
+            st.markdown("<div style='direction:rtl;text-align:right'><h4>📊 הסתברויות</h4></div>", unsafe_allow_html=True)
             elo_conf = analysis.get("elo_confidence", 1.0)
             if elo_conf < 0.7:
                 st.warning(
@@ -637,16 +703,13 @@ with tab_intel:
                 st.markdown("#### 🔄 נתוני עבר (H2H)")
                 h2h_rows = []
                 for m in h2h[:5]:
-                    goals = m.get("goals") or {}
-                    hg = goals.get("home") if isinstance(goals, dict) else None
-                    ag = goals.get("away") if isinstance(goals, dict) else None
-                    score_str = f"{hg}-{ag}" if hg is not None and ag is not None else "—"
-                    teams = m.get("teams", {})
+                    hg = m["goals"]["home"] or 0
+                    ag = m["goals"]["away"] or 0
                     h2h_rows.append({
-                        "תאריך": m.get("fixture", {}).get("date", "")[:10],
-                        "ביתי":  teams.get("home", {}).get("name", "Unknown"),
-                        "תוצאה": score_str,
-                        "אורח":  teams.get("away", {}).get("name", "Unknown"),
+                        "תאריך": m["fixture"]["date"][:10],
+                        "ביתי": m["teams"]["home"]["name"],
+                        "תוצאה": f"{hg}-{ag}",
+                        "אורח": m["teams"]["away"]["name"],
                     })
                 st.dataframe(pd.DataFrame(h2h_rows), hide_index=True, use_container_width=True)
 
