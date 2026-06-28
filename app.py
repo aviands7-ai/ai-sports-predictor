@@ -846,7 +846,22 @@ with tab_paper:
     wins     = sum(1 for t in closed if t.get("status") == "זכה")
     win_rate = wins / len(closed) * 100 if closed else 0
 
-    k1,k2,k3,k4,k5 = st.columns(5)
+    # ── Drawdown Protection ───────────────────────────────────────────────────
+    # מחשב Peak Bankroll ו-Current Drawdown מהיסטוריית העסקאות
+    running_bk = INITIAL_BANKROLL
+    peak_bk    = INITIAL_BANKROLL
+    for t in trades:
+        stake = float(t.get("stake", 0))
+        odds  = float(t.get("exec_odds", 1))
+        if t.get("status") == "זכה":
+            running_bk += stake * (odds - 1)
+        elif t.get("status") == "הפסיד":
+            running_bk -= stake
+        if running_bk > peak_bk:
+            peak_bk = running_bk
+    drawdown_pct = (peak_bk - current_bankroll) / peak_bk * 100 if peak_bk > 0 else 0.0
+
+    k1,k2,k3,k4,k5,k6 = st.columns(6)
     k1.metric("תקציב התחלתי", f"₪{INITIAL_BANKROLL:.0f}")
     k2.metric("תקציב נוכחי", f"₪{current_bankroll:.1f}",
               delta=f"{current_bankroll-INITIAL_BANKROLL:+.1f}")
@@ -854,7 +869,20 @@ with tab_paper:
     k4.metric("הימורים", len(trades))
     k5.metric("Win Rate", f"{win_rate:.0f}%",
               delta=f"{wins}/{len(closed)}" if closed else "0/0")
+    k6.metric("📉 Drawdown", f"{drawdown_pct:.1f}%",
+              delta=f"Peak ₪{peak_bk:.1f}",
+              delta_color="inverse")
     st.divider()
+
+    # ── Dynamic Risk Management Toggle ───────────────────────────────────────
+    dynamic_risk = st.toggle("🛡️ Dynamic Risk Management", value=False,
+                             help="על כל 1% Drawdown — חתך Kelly ב-2% (מינימום 10% מ-Kelly המקורי)")
+    if dynamic_risk and drawdown_pct > 0:
+        kelly_multiplier = max(0.10, 1.0 - (drawdown_pct * 0.02))
+        st.info(f"⚠️ Drawdown {drawdown_pct:.1f}% → Kelly מותאם: **{kelly_multiplier:.0%}** מהמקורי "
+                f"(Peak ₪{peak_bk:.1f} → נוכחי ₪{current_bankroll:.1f})")
+    else:
+        kelly_multiplier = 1.0
 
     st.markdown("#### ➕ הוסף עסקה")
     vb_data  = st.session_state.get("last_value_bets", [])
