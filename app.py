@@ -580,10 +580,14 @@ with tab_value:
             outcome_labels = {"home": home_name, "draw": "תיקו", "away": away_name}
 
             elo_confidence = an.get("elo_confidence", 1.0)
-            MIN_GAMES_FOR_VB = 3
-            gp_min_known = [g for g in [gp_h, gp_a] if g >= 0]
-            if gp_min_known and min(gp_min_known) < MIN_GAMES_FOR_VB:
-                continue
+            is_nfp = bool(pred.get("sport_key", ""))
+
+            # NFP — מדלג על סינון games_played (אין היסטוריה ב-DB)
+            if not is_nfp:
+                MIN_GAMES_FOR_VB = 3
+                gp_min_known = [g for g in [gp_h, gp_a] if g >= 0]
+                if gp_min_known and min(gp_min_known) < MIN_GAMES_FOR_VB:
+                    continue
 
             EV_HARD_CAP = 0.40
             for outcome in outcomes:
@@ -593,7 +597,8 @@ with tab_value:
                     continue
                 if ev > EV_HARD_CAP:
                     continue
-                if elo_confidence < 0.5:
+                # NFP — מדלג על סינון elo_confidence (Elo = ברירת מחדל)
+                if not is_nfp and elo_confidence < 0.5:
                     continue
                 value_rows.append({
                     "תאריך":       match_date,
