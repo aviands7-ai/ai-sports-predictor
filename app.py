@@ -20,11 +20,201 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; direction: rtl; }
-.stTabs [data-baseweb="tab"] { font-size: 0.92rem; font-weight: 600; }
-.stDownloadButton > button { background: #16a34a !important; color: white !important; font-weight: 700 !important; border-radius: 8px !important; }
-div[data-testid="metric-container"] { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Base ── */
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+    direction: rtl;
+    background-color: #0a0e1a;
+    color: #e2e8f0;
+}
+
+/* ── App background ── */
+.stApp {
+    background-color: #0a0e1a;
+}
+.block-container {
+    padding-top: 1.5rem;
+    max-width: 1200px;
+}
+
+/* ── Tabs ── */
+.stTabs [data-baseweb="tab-list"] {
+    background: #111827;
+    border-radius: 12px;
+    padding: 4px;
+    gap: 2px;
+    border: 1px solid #1e293b;
+}
+.stTabs [data-baseweb="tab"] {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #64748b;
+    border-radius: 8px;
+    padding: 8px 16px;
+    border: none;
+    letter-spacing: 0.01em;
+}
+.stTabs [aria-selected="true"] {
+    background: #1e3a8a !important;
+    color: #93c5fd !important;
+}
+.stTabs [data-baseweb="tab-highlight"] { display: none; }
+.stTabs [data-baseweb="tab-border"] { display: none; }
+
+/* ── Metrics ── */
+div[data-testid="metric-container"] {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 16px 20px;
+    transition: border-color 0.2s;
+}
+div[data-testid="metric-container"]:hover {
+    border-color: #3b82f6;
+}
+div[data-testid="metric-container"] label {
+    color: #64748b !important;
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+div[data-testid="metric-container"] [data-testid="metric-value"] {
+    color: #f1f5f9 !important;
+    font-size: 1.6rem !important;
+    font-weight: 700 !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+div[data-testid="metric-container"] [data-testid="metric-delta"] {
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 0.8rem !important;
+}
+
+/* ── Dataframes / Tables ── */
+div[data-testid="stDataFrame"] {
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    overflow: hidden;
+}
+div[data-testid="stDataFrame"] th {
+    background: #111827 !important;
+    color: #64748b !important;
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid #1e293b !important;
+}
+div[data-testid="stDataFrame"] td {
+    color: #cbd5e1 !important;
+    font-size: 0.85rem !important;
+    border-bottom: 1px solid #0f172a !important;
+}
+div[data-testid="stDataFrame"] tr:hover td {
+    background: #1e293b !important;
+}
+
+/* ── Buttons ── */
+.stButton > button {
+    background: #1d4ed8 !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    border: none !important;
+    padding: 10px 24px !important;
+    font-size: 0.875rem !important;
+    letter-spacing: 0.02em;
+    transition: background 0.2s, transform 0.1s !important;
+}
+.stButton > button:hover {
+    background: #2563eb !important;
+    transform: translateY(-1px) !important;
+}
+.stButton > button:active {
+    transform: translateY(0) !important;
+}
+.stDownloadButton > button {
+    background: #065f46 !important;
+    color: #6ee7b7 !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    border: 1px solid #10b981 !important;
+}
+.stDownloadButton > button:hover {
+    background: #047857 !important;
+}
+
+/* ── Inputs / Selects ── */
+.stSelectbox > div > div,
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input {
+    background: #111827 !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 8px !important;
+    color: #e2e8f0 !important;
+}
+.stSelectbox > div > div:focus-within,
+.stTextInput > div > div > input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.2) !important;
+}
+
+/* ── Toggle ── */
+.stToggle > label {
+    color: #94a3b8 !important;
+    font-size: 0.875rem;
+}
+
+/* ── Expander ── */
+.streamlit-expanderHeader {
+    background: #111827 !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 10px !important;
+    color: #94a3b8 !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+}
+.streamlit-expanderContent {
+    background: #0f172a !important;
+    border: 1px solid #1e293b !important;
+    border-top: none !important;
+    border-radius: 0 0 10px 10px !important;
+}
+
+/* ── Divider ── */
+hr {
+    border-color: #1e293b !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* ── Info / Warning / Success boxes ── */
+div[data-testid="stAlert"] {
+    border-radius: 10px !important;
+    border-width: 1px !important;
+    font-size: 0.875rem !important;
+}
+
+/* ── Progress bar ── */
+.stProgress > div > div {
+    background: #1d4ed8 !important;
+    border-radius: 4px !important;
+}
+
+/* ── Spinner ── */
+.stSpinner > div {
+    border-top-color: #3b82f6 !important;
+}
+
+/* ── Sidebar (if used) ── */
+.css-1d391kg { background: #111827; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -129,9 +319,21 @@ def safe_float(val, default="—") -> str:
 
 # ─── כותרת ────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="text-align:center;padding:32px 20px 24px;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#0f172a 100%);border-radius:16px;margin-bottom:24px">
-  <div style="font-size:28px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;margin-bottom:8px">🏆 Sports Predictor</div>
-  <div style="font-size:12px;color:#93c5fd;letter-spacing:0.12em;text-transform:uppercase">Elo &nbsp;·&nbsp; Dixon-Coles &nbsp;·&nbsp; Kelly Criterion &nbsp;·&nbsp; Value Bets &nbsp;·&nbsp; Multi-Sport</div>
+<div style="text-align:center;padding:40px 20px 32px;background:linear-gradient(160deg,#020817 0%,#0f1e45 40%,#0d1b3e 70%,#020817 100%);border-radius:20px;margin-bottom:28px;border:1px solid #1e3a8a;position:relative;overflow:hidden;">
+  <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#3b82f6,#60a5fa,#3b82f6,transparent);"></div>
+  <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#3b82f6;letter-spacing:0.25em;text-transform:uppercase;margin-bottom:14px;opacity:0.8">QUANTITATIVE SPORTS INTELLIGENCE</div>
+  <div style="font-size:32px;font-weight:700;color:#f1f5f9;letter-spacing:-1px;margin-bottom:10px;font-family:'Inter',sans-serif">Sports Predictor <span style="font-size:28px">🏆</span></div>
+  <div style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-top:12px;">
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#475569;letter-spacing:0.15em">ELO</span>
+    <span style="color:#1e3a8a">·</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#475569;letter-spacing:0.15em">DIXON-COLES</span>
+    <span style="color:#1e3a8a">·</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#475569;letter-spacing:0.15em">KELLY CRITERION</span>
+    <span style="color:#1e3a8a">·</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#475569;letter-spacing:0.15em">VALUE BETS</span>
+    <span style="color:#1e3a8a">·</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#475569;letter-spacing:0.15em">MULTI-SPORT</span>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
