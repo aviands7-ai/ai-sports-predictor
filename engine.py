@@ -338,7 +338,7 @@ def apply_elo_confidence(probs: dict, elo_home: float, elo_away: float,
 # ─── Dynamic K Factor ───────────────────────────────────────────────────────────
 
 def dynamic_k(round_name: str = "") -> float:
-    round_lower = round_name.lower()
+    round_lower = (round_name or "").lower()
     if "final" in round_lower and "semi" not in round_lower:
         return 60.0
     elif "semi" in round_lower:
